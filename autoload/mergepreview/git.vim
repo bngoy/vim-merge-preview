@@ -13,19 +13,47 @@ function! mergepreview#git#InRepo() abort
   return l:r.ok && get(l:r.lines, 0, '') ==# 'true'
 endfunction
 
+" Auto-detect the integration branch to diff HEAD against.
+"
+" Order:
+"   1. `origin/HEAD` (the remote's default branch) — most reliable when it
+"      exists, since it names the actual integration branch rather than the
+"      branch HEAD happens to track.
+"   2. local `main`, `master`, `develop` — in that order, skipping any that
+"      equals the current branch name.
+"   3. `@{upstream}` — last resort. Skipped when it resolves to the same
+"      branch as HEAD, since diffing a branch against its own remote copy
+"      never produces the review diff the user is after.
 function! mergepreview#git#DetectBase() abort
-  let l:up = s:Run('rev-parse --abbrev-ref --symbolic-full-name @{upstream}')
-  if l:up.ok && !empty(l:up.lines)
-    let l:name = l:up.lines[0]
-    " strip remote prefix (origin/main -> main) for display; use full ref for merge-base
-    return l:name
+  let l:head = mergepreview#git#HeadName()
+
+  let l:def = s:Run('symbolic-ref --short --quiet refs/remotes/origin/HEAD')
+  if l:def.ok && !empty(l:def.lines)
+    let l:name = l:def.lines[0]
+    if !empty(l:name) && l:name !=# 'origin/' . l:head
+      return l:name
+    endif
   endif
+
   for l:cand in ['main', 'master', 'develop']
+    if l:cand ==# l:head
+      continue
+    endif
     let l:v = s:Run('rev-parse --verify --quiet ' . shellescape(l:cand))
     if l:v.ok
       return l:cand
     endif
   endfor
+
+  let l:up = s:Run('rev-parse --abbrev-ref --symbolic-full-name @{upstream}')
+  if l:up.ok && !empty(l:up.lines)
+    let l:name = l:up.lines[0]
+    let l:bare = substitute(l:name, '^[^/]\+/', '', '')
+    if l:bare !=# l:head
+      return l:name
+    endif
+  endif
+
   return ''
 endfunction
 

@@ -50,7 +50,9 @@ function! mergepreview#Open(...) abort
 
   let l:files = mergepreview#git#ChangedFiles(l:merge_base)
   if empty(l:files)
-    call s:Warn('no files changed between ' . l:base . ' and HEAD')
+    call s:Warn('no files changed between ' . l:base . ' and HEAD — '
+          \ . 'pass an explicit base, e.g. :MergePreview main, '
+          \ . 'or set g:merge_preview_base')
     return
   endif
 
