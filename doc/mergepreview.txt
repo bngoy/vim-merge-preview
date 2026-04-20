@@ -1,0 +1,115 @@
+*mergepreview.txt*  Preview a branch before merging it back
+
+Author:  https://github.com/bngoy/vim-merge-preview
+License: MIT
+
+==============================================================================
+CONTENTS                                                *mergepreview-contents*
+
+  1. Intro ................................... |mergepreview-intro|
+  2. Commands ................................ |mergepreview-commands|
+  3. Layout .................................. |mergepreview-layout|
+  4. Mappings ................................ |mergepreview-mappings|
+  5. Options ................................. |mergepreview-options|
+  6. Dependencies ............................ |mergepreview-dependencies|
+  7. How it works ............................ |mergepreview-internals|
+
+==============================================================================
+1. Intro                                                *mergepreview-intro*
+
+|mergepreview| opens a three-pane layout that answers three questions about a
+feature branch at once:
+
+  * what files changed vs. the branch it was cut from?
+  * which commits on the branch touched the currently open file?
+  * which commit produced the diff chunk under the cursor?
+
+The base branch is detected automatically (upstream, then `main`, `master`,
+`develop`) or can be passed explicitly.
+
+==============================================================================
+2. Commands                                             *mergepreview-commands*
+
+                                                        *:MergePreview*
+:MergePreview [base]    Open the preview in a new tabpage. Without [base] the
+                        plugin auto-detects it.
+
+                                                        *:MergePreviewClose*
+:MergePreviewClose      Tear down the layout, wipe plugin buffers, close the
+                        tabpage.
+
+                                                        *:MergePreviewToggle*
+:MergePreviewToggle     Cycle the file view through the available modes:
+                        `diff` -> `delta` (if installed) -> `plain` -> `diff`.
+
+==============================================================================
+3. Layout                                               *mergepreview-layout*
+>
+    +-- Files ---+---- File view ---------+--- Commits ------+
+    |* M foo.py  | diff/delta/plain       |> abc1234 Add X   |
+    |  A bar.go  |                        |> def4567 Fix edge|
+    |  M baz.md  |                        |> 7f9a224 Refactor|
+    +------------+------------------------+------------------+
+<
+Commits panel uses native folding: subject lines are fold headers, the body
+lines are the fold content. Use the standard fold keys (|zo|, |zc|, |za|,
+|zM|, |zR|).
+
+==============================================================================
+4. Mappings                                             *mergepreview-mappings*
+
+Files panel:
+  <CR> / o      Open the file under the cursor in the middle pane.
+  q             Close the session.
+
+File view:
+  ]c            Jump to next hunk; move the commits cursor to its commit.
+  [c            Previous hunk; same highlight behavior.
+  <leader>mt    Toggle file-view mode.
+  <leader>mq    Close the session.
+
+Commits panel:
+  <CR>          Show the selected commit in a new tab (via `git show`).
+  za / zo / zc  Toggle / open / close the body of one commit (Vim built-in).
+  zM / zR       Collapse all / expand all (Vim built-in).
+  q             Close the session.
+
+==============================================================================
+5. Options                                              *mergepreview-options*
+
+                                                *g:merge_preview_base*
+Default: ''.
+When non-empty, used as the base branch unless an explicit argument is passed
+to |:MergePreview|.
+
+                                                *g:merge_preview_delta_args*
+Default: `--paging=never --line-numbers --file-style=omit --hunk-header-style=omit`
+Flags passed to `delta` when rendering the file view in `delta` mode.
+
+==============================================================================
+6. Dependencies                                         *mergepreview-dependencies*
+
+Required:
+  * Vim 8.1+ with |+terminal|.
+  * `git` on $PATH.
+
+Recommended:
+  * vim-fugitive: used for |:Gdiffsplit| against the merge-base. When absent,
+    the plugin falls back to a manual diff split populated from `git show`.
+  * delta (https://github.com/dandavison/delta): enables the syntax-highlighted
+    single-pane mode. If not on $PATH, the toggle skips `delta` mode.
+
+==============================================================================
+7. How it works                                         *mergepreview-internals*
+
+All view data derives from a single merge-base:
+  * files:   `git diff --name-status <merge-base>...HEAD`
+  * commits: `git log <merge-base>..HEAD -- <file>`
+  * hunks:   `git diff --unified=0 <merge-base>...HEAD -- <file>`
+  * blame:   `git blame --porcelain -L n,n HEAD -- <file>` (filtered to the
+             commits in <merge-base>..HEAD).
+
+Blame results are filtered to commits within the range, so lines that existed
+on the base branch do not highlight a commit when jumping hunks.
+
+ vim:tw=78:ts=8:ft=help:norl:
