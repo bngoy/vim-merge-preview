@@ -15,7 +15,8 @@ function! s:Err(msg) abort
 endfunction
 
 function! mergepreview#CompleteBase(arglead, cmdline, cursorpos) abort
-  let l:out = systemlist('git for-each-ref --format=%(refname:short) refs/heads refs/remotes')
+  let l:out = systemlist('git for-each-ref --format='
+        \ . shellescape('%(refname:short)') . ' refs/heads refs/remotes')
   if v:shell_error != 0
     return []
   endif
@@ -34,8 +35,10 @@ function! mergepreview#Open(...) abort
   endif
 
   let l:base = (a:0 >= 1 && !empty(a:1)) ? a:1 : g:merge_preview_base
+  let l:auto = 0
   if empty(l:base)
     let l:base = mergepreview#git#DetectBase()
+    let l:auto = 1
   endif
   if empty(l:base)
     call s:Err('could not detect a base branch (set g:merge_preview_base)')
@@ -81,6 +84,11 @@ function! mergepreview#Open(...) abort
 
   " Open the first file by default.
   call mergepreview#SetActiveFile(s:session.files[0].path)
+
+  if l:auto
+    echo printf('mergepreview: base = %s (auto; override with :MergePreview <ref>)',
+          \ l:base)
+  endif
 endfunction
 
 function! mergepreview#Close() abort

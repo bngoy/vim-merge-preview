@@ -15,46 +15,124 @@ endfunction
 
 " Auto-detect the integration branch to diff HEAD against.
 "
-" Order:
-"   1. `origin/HEAD` (the remote's default branch) — most reliable when it
-"      exists, since it names the actual integration branch rather than the
-"      branch HEAD happens to track.
-"   2. local `main`, `master`, `develop` — in that order, skipping any that
-"      equals the current branch name.
-"   3. `@{upstream}` — last resort. Skipped when it resolves to the same
-"      branch as HEAD, since diffing a branch against its own remote copy
-"      never produces the review diff the user is after.
+" Strategy: find the branch whose tip is the nearest ancestor of HEAD. For
+" each candidate branch B, compute the merge-base with HEAD and count the
+" commits in `<merge-base>..HEAD`. The actual parent branch (the one HEAD
+" was cut from) produces the smallest count — it's the most recent point
+" where our history diverged. Ties are broken by name preference
+" (main > master > develop > others).
+"
+" Candidates are local branches plus `origin/HEAD` (resolved to its target)
+" and `origin/main` / `origin/master` / `origin/develop`. Remote branches
+" beyond those aren't scanned — in large repos that would be hundreds of
+" refs and the heuristic doesn't benefit from them. Override with
+" `:MergePreview <ref>` or `g:merge_preview_base` when the heuristic misses.
 function! mergepreview#git#DetectBase() abort
   let l:head = mergepreview#git#HeadName()
+  let l:head_sha = s:HeadSha()
 
-  let l:def = s:Run('symbolic-ref --short --quiet refs/remotes/origin/HEAD')
-  if l:def.ok && !empty(l:def.lines)
-    let l:name = l:def.lines[0]
-    if !empty(l:name) && l:name !=# 'origin/' . l:head
-      return l:name
-    endif
+  let l:candidates = s:CandidateBases(l:head)
+
+  let l:scored = []
+  for l:name in l:candidates
+    let l:mb = mergepreview#git#MergeBase(l:name)
+    if empty(l:mb) | continue | endif
+    " Skip branches that are downstream of HEAD (their merge-base equals HEAD)
+    " — HEAD has nothing to compare against.
+    if l:mb ==# l:head_sha | continue | endif
+    let l:ahead = s:CommitCount(l:mb . '..HEAD')
+    if l:ahead <= 0 | continue | endif
+    call add(l:scored, {
+          \ 'name': l:name,
+          \ 'ahead': l:ahead,
+          \ 'priority': s:BranchPriority(l:name),
+          \ })
+  endfor
+
+  if !empty(l:scored)
+    call sort(l:scored, function('s:CompareCandidates'))
+    return l:scored[0].name
   endif
 
-  for l:cand in ['main', 'master', 'develop']
-    if l:cand ==# l:head
-      continue
-    endif
+  " Fallback: nothing scored (e.g. detached HEAD, or brand-new branch with no
+  " new commits). Return the first reachable conventional branch, skipping
+  " any whose name matches HEAD's.
+  for l:cand in ['origin/main', 'origin/master', 'main', 'master', 'develop']
+    if l:cand ==# l:head || l:cand ==# 'origin/' . l:head | continue | endif
     let l:v = s:Run('rev-parse --verify --quiet ' . shellescape(l:cand))
     if l:v.ok
       return l:cand
     endif
   endfor
+  return ''
+endfunction
 
-  let l:up = s:Run('rev-parse --abbrev-ref --symbolic-full-name @{upstream}')
-  if l:up.ok && !empty(l:up.lines)
-    let l:name = l:up.lines[0]
-    let l:bare = substitute(l:name, '^[^/]\+/', '', '')
-    if l:bare !=# l:head
-      return l:name
-    endif
+function! s:HeadSha() abort
+  let l:r = s:Run('rev-parse HEAD')
+  return l:r.ok ? get(l:r.lines, 0, '') : ''
+endfunction
+
+function! s:CommitCount(range) abort
+  let l:r = s:Run('rev-list --count ' . shellescape(a:range))
+  if !l:r.ok | return 0 | endif
+  return str2nr(get(l:r.lines, 0, '0'))
+endfunction
+
+function! s:CandidateBases(head) abort
+  let l:names = []
+
+  let l:locals = s:Run('for-each-ref --format=' . shellescape('%(refname:short)')
+        \ . ' refs/heads/')
+  if l:locals.ok
+    for l:n in l:locals.lines
+      if !empty(l:n) && l:n !=# a:head
+        call add(l:names, l:n)
+      endif
+    endfor
   endif
 
-  return ''
+  " Resolve origin/HEAD to its target branch, then add common integration
+  " branches on the origin remote.
+  let l:origin_head = s:Run('symbolic-ref --short --quiet refs/remotes/origin/HEAD')
+  if l:origin_head.ok && !empty(l:origin_head.lines)
+    let l:n = l:origin_head.lines[0]
+    if !empty(l:n) && l:n !=# 'origin/' . a:head
+      call add(l:names, l:n)
+    endif
+  endif
+  for l:n in ['origin/main', 'origin/master', 'origin/develop']
+    if l:n ==# 'origin/' . a:head | continue | endif
+    let l:v = s:Run('rev-parse --verify --quiet ' . shellescape(l:n))
+    if l:v.ok
+      call add(l:names, l:n)
+    endif
+  endfor
+
+  let l:seen = {}
+  let l:unique = []
+  for l:n in l:names
+    if !has_key(l:seen, l:n)
+      let l:seen[l:n] = 1
+      call add(l:unique, l:n)
+    endif
+  endfor
+  return l:unique
+endfunction
+
+function! s:BranchPriority(name) abort
+  let l:bare = substitute(a:name, '^[^/]\+/', '', '')
+  if l:bare ==# 'main'    | return 0 | endif
+  if l:bare ==# 'master'  | return 1 | endif
+  if l:bare ==# 'develop' | return 2 | endif
+  if l:bare ==# 'dev'     | return 3 | endif
+  return 10
+endfunction
+
+function! s:CompareCandidates(a, b) abort
+  if a:a.ahead != a:b.ahead
+    return a:a.ahead - a:b.ahead
+  endif
+  return a:a.priority - a:b.priority
 endfunction
 
 function! mergepreview#git#MergeBase(base) abort

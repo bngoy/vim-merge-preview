@@ -24,8 +24,14 @@ feature branch at once:
   * which commits on the branch touched the currently open file?
   * which commit produced the diff chunk under the cursor?
 
-The base branch is detected automatically (upstream, then `main`, `master`,
-`develop`) or can be passed explicitly.
+Base branch detection picks the *nearest ancestor* of HEAD: for every local
+branch and `origin/HEAD`, `origin/main`, `origin/master`, `origin/develop`,
+the plugin computes the merge-base with HEAD and selects the branch whose
+`<merge-base>..HEAD` count is smallest. This is the branch HEAD was most
+recently cut from: usually `main`/`master`, but the correct intermediate
+branch in stacked or `develop`-based workflows. Ties prefer `main` >
+`master` > `develop`. Override by passing an argument to |:MergePreview| or
+by setting |g:merge_preview_base|.
 
 ==============================================================================
 2. Commands                                             *mergepreview-commands*

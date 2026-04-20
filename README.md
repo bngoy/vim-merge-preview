@@ -12,10 +12,18 @@ history for the branch vs. the branch it was cut from.
 +------------+------------------------+------------------+
 ```
 
-The base branch is auto-detected (`@{upstream}` → `main` → `master` →
-`develop`). Jumping hunks with `]c` / `[c` in the file view moves the
-cursor in the commits panel to the commit that owns the hunk (via
-`git blame` filtered to the `<merge-base>..HEAD` range).
+The base branch is auto-detected as the **nearest ancestor**: for every
+local branch plus `origin/HEAD`, `origin/main`, `origin/master`, and
+`origin/develop`, the plugin computes the merge-base with HEAD and picks
+the branch whose `<merge-base>..HEAD` is shortest — i.e. the branch HEAD
+was most recently cut from. In a simple main-based workflow this is
+`main`; in stacked or `develop`-based workflows it picks the correct
+intermediate branch. Ties break in favor of `main` > `master` > `develop`.
+Override with `:MergePreview <ref>` or `g:merge_preview_base`.
+
+Jumping hunks with `]c` / `[c` in the file view moves the cursor in the
+commits panel to the commit that owns the hunk (via `git blame` filtered
+to the `<merge-base>..HEAD` range).
 
 ## Install
 
@@ -66,6 +74,32 @@ let g:merge_preview_delta_args =
 ```
 
 See `:help mergepreview` for full documentation.
+
+## Troubleshooting
+
+**`mergepreview: no files changed between <base> and HEAD`** — HEAD and
+the detected base have no diff. Most common causes:
+
+- *Bare/partial clone without `origin/HEAD`.* Some fresh clones (especially
+  bare clones or clones made with `--no-local-branches`) don't have
+  `refs/remotes/origin/HEAD` set, so the plugin can't see the remote's
+  default branch. Either set it once —
+  ```sh
+  git remote set-head origin --auto
+  ```
+  — or skip detection by naming the base explicitly: `:MergePreview main`.
+
+- *Current branch's upstream is itself* (e.g. `feat/x` tracks
+  `origin/feat/x`). Auto-detect now prefers `origin/HEAD` and local
+  integration branches over `@{upstream}`, so this shouldn't trigger on a
+  normal clone; if it does, the bare-clone fix above usually resolves it.
+
+- *You want a non-standard base.* Pass it explicitly:
+  ```vim
+  :MergePreview some/team-branch
+  " or in vimrc:
+  let g:merge_preview_base = 'some/team-branch'
+  ```
 
 ## License
 
