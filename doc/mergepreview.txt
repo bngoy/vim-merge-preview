@@ -45,21 +45,35 @@ by setting |g:merge_preview_base|.
                         tabpage.
 
                                                         *:MergePreviewToggle*
-:MergePreviewToggle     Cycle the file view through the available modes:
-                        `diff` -> `delta` (if installed) -> `plain` -> `diff`.
+:MergePreviewToggle     Cycle the file view through the available modes in
+                        this order, skipping any whose tool is not on $PATH:
+
+                          diff    - side-by-side Vim diff (built-in)
+                          delta   - single-pane, syntax-highlighted unified
+                                    diff (requires `delta`)
+                          difft   - single-pane, tree-sitter structural diff
+                                    (requires `difft`, i.e. difftastic)
+                          plain   - raw unified diff with filetype=diff
 
 ==============================================================================
 3. Layout                                               *mergepreview-layout*
 >
-    +-- Files ---+---- File view ---------+--- Commits ------+
-    |* M foo.py  | diff/delta/plain       |> abc1234 Add X   |
-    |  A bar.go  |                        |> def4567 Fix edge|
-    |  M baz.md  |                        |> 7f9a224 Refactor|
-    +------------+------------------------+------------------+
+    +-- Files --------+---- File view -------+-- Commits ------------+
+    | Changes: feat   | diff / delta /       | Commits touching      |
+    | vs main         | difft / plain        | foo.py (main..HEAD)   |
+    |-----------------|                      |-----------------------|
+    |* M foo.py       |                      |> abc1234 Add X        |
+    |  A bar.go       |                      |> def4567 Fix edge     |
+    |  M baz.md       |                      |> 7f9a224 Refactor     |
+    +-----------------+----------------------+-----------------------+
 <
+The files and commits panels have a title line and rule at the top so they
+read independently of any window tabline or menubar above them.
+
 Commits panel uses native folding: subject lines are fold headers, the body
 lines are the fold content. Use the standard fold keys (|zo|, |zc|, |za|,
-|zM|, |zR|).
+|zM|, |zR|). The title lines stay at fold level 0 — they are never folded
+into the first commit's body.
 
 ==============================================================================
 4. Mappings                                             *mergepreview-mappings*
@@ -92,6 +106,12 @@ to |:MergePreview|.
 Default: `--paging=never --line-numbers --file-style=omit --hunk-header-style=omit`
 Flags passed to `delta` when rendering the file view in `delta` mode.
 
+                                                *g:merge_preview_difft_args*
+Default: `--color=always --background=dark`
+Flags passed to `difft` when rendering the file view in `difft` mode. difft
+is wired in via GIT_EXTERNAL_DIFF so the plugin invokes
+`env GIT_EXTERNAL_DIFF='difft <args>' git diff --ext-diff <merge-base>...HEAD -- <file>`.
+
 ==============================================================================
 6. Dependencies                                         *mergepreview-dependencies*
 
@@ -99,11 +119,12 @@ Required:
   * Vim 8.1+ with |+terminal|.
   * `git` on $PATH.
 
-Recommended:
-  * vim-fugitive: used for |:Gdiffsplit| against the merge-base. When absent,
-    the plugin falls back to a manual diff split populated from `git show`.
-  * delta (https://github.com/dandavison/delta): enables the syntax-highlighted
-    single-pane mode. If not on $PATH, the toggle skips `delta` mode.
+Optional:
+  * delta (https://github.com/dandavison/delta): enables the
+    syntax-highlighted single-pane mode.
+  * difftastic / difft (https://github.com/Wilfred/difftastic): enables the
+    structural single-pane mode.
+  Missing tools are silently skipped by the toggle.
 
 ==============================================================================
 7. How it works                                         *mergepreview-internals*

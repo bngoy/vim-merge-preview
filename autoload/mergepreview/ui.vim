@@ -12,6 +12,17 @@ function! s:ScratchBuf(name) abort
   setlocal signcolumn=no
 endfunction
 
+" Panel headers: a title line + an underline drawn across the window width.
+" Returns the list of lines to prepend; also sets b:mp_header_lines so handlers
+" (fold expr, click handlers, line-to-index mappers) can skip the header.
+function! s:HeaderLines(title) abort
+  let l:w = max([winwidth(0), 40])
+  " ASCII separator so we don't depend on Unicode rendering.
+  let l:bar = repeat('─', l:w - 1)
+  let b:mp_header_lines = 2
+  return [' ' . a:title, l:bar]
+endfunction
+
 function! s:SetFilesMappings() abort
   nnoremap <silent> <buffer> <CR> :call <SID>FilesOpen()<CR>
   nnoremap <silent> <buffer> o    :call <SID>FilesOpen()<CR>
@@ -33,11 +44,11 @@ endfunction
 function! s:FilesOpen() abort
   let l:s = mergepreview#Session()
   if empty(l:s) | return | endif
-  let l:lnum = line('.')
-  if l:lnum < 1 || l:lnum > len(l:s.files)
+  let l:idx = line('.') - get(b:, 'mp_header_lines', 0) - 1
+  if l:idx < 0 || l:idx >= len(l:s.files)
     return
   endif
-  call mergepreview#OpenFile(l:s.files[l:lnum - 1].path)
+  call mergepreview#OpenFile(l:s.files[l:idx].path)
 endfunction
 
 function! s:CommitsShow() abort
@@ -108,18 +119,26 @@ function! mergepreview#ui#RenderFiles(session) abort
   execute l:win . 'wincmd w'
   setlocal modifiable
   silent %delete _
-  let l:lines = []
+  let l:title = printf('Changes: %s vs %s', a:session.head, a:session.base)
+  let l:lines = s:HeaderLines(l:title)
   for l:f in a:session.files
     call add(l:lines, printf('%s  %s', l:f.status, l:f.path))
   endfor
   call setline(1, l:lines)
   setlocal nomodifiable
   setlocal cursorline
+  " Move cursor past the header so <CR> on the first keypress opens a file.
+  call cursor(b:mp_header_lines + 1, 1)
   syntax clear
+  " Header: title (line 1) and underline (line 2).
+  execute 'syntax match mergepreviewTitle /\%1l.*/'
+  execute 'syntax match mergepreviewRule  /\%2l.*/'
   syntax match mergepreviewStatusA /^A\ze\s/
   syntax match mergepreviewStatusM /^M\ze\s/
   syntax match mergepreviewStatusD /^D\ze\s/
   syntax match mergepreviewStatusR /^R\ze\s/
+  highlight default link mergepreviewTitle   Title
+  highlight default link mergepreviewRule    NonText
   highlight default link mergepreviewStatusA DiffAdd
   highlight default link mergepreviewStatusM DiffChange
   highlight default link mergepreviewStatusD DiffDelete
@@ -134,24 +153,31 @@ function! mergepreview#ui#RenderCommits(session) abort
   execute l:win . 'wincmd w'
   setlocal modifiable
   silent %delete _
+  let l:title = printf('Commits touching %s (%s..HEAD)',
+        \ a:session.active_file, a:session.base)
+  let l:lines = s:HeaderLines(l:title)
   let l:commits = mergepreview#git#CommitsForFile(
         \ a:session.merge_base, a:session.active_file)
-  let l:lines = []
   for l:c in l:commits
     call add(l:lines, printf('%s %s', l:c.sha, l:c.subject))
     for l:b in l:c.body
       call add(l:lines, '    ' . l:b)
     endfor
   endfor
-  if empty(l:lines)
+  if empty(l:commits)
     call add(l:lines, '(no commits on HEAD touch this file)')
   endif
   call setline(1, l:lines)
   setlocal nomodifiable
   setlocal cursorline
+  call cursor(b:mp_header_lines + 1, 1)
   syntax clear
+  execute 'syntax match mergepreviewTitle /\%1l.*/'
+  execute 'syntax match mergepreviewRule  /\%2l.*/'
   syntax match mergepreviewSha /^\x\{7,40}\ze /
-  highlight default link mergepreviewSha Identifier
+  highlight default link mergepreviewTitle Title
+  highlight default link mergepreviewRule  NonText
+  highlight default link mergepreviewSha   Identifier
   " Re-apply fold settings in case syntax reset affected state.
   setlocal foldmethod=expr
   setlocal foldexpr=mergepreview#commits#FoldExpr(v:lnum)
@@ -172,6 +198,8 @@ function! mergepreview#ui#RenderFileView(session) abort
     call s:RenderDiffMode(a:session)
   elseif a:session.mode ==# 'delta' && executable('delta')
     call s:RenderDeltaMode(a:session)
+  elseif a:session.mode ==# 'difft' && executable('difft')
+    call s:RenderDifftMode(a:session)
   else
     call s:RenderPlainMode(a:session)
   endif
@@ -278,6 +306,22 @@ function! s:RenderDeltaMode(session) abort
   call s:SetFileViewMappings()
 endfunction
 
+" Single-pane structural diff via difftastic. difft honors the 7-arg
+" GIT_EXTERNAL_DIFF protocol directly, so wiring it through `git diff
+" --ext-diff` is the simplest way to get the branch-range diff rendered.
+function! s:RenderDifftMode(session) abort
+  let l:args = get(g:, 'merge_preview_difft_args',
+        \ '--color=always --background=dark')
+  let l:cmd = 'env GIT_EXTERNAL_DIFF=' . shellescape('difft ' . l:args)
+        \ . ' git diff --ext-diff '
+        \ . shellescape(a:session.merge_base) . '...HEAD -- '
+        \ . shellescape(a:session.active_file)
+  enew
+  execute 'terminal ++curwin ++close ' . &shell . ' -c ' . shellescape(l:cmd)
+  let a:session.view_bufnr = bufnr('%')
+  call s:SetFileViewMappings()
+endfunction
+
 function! s:RenderPlainMode(session) abort
   enew
   call s:ScratchBuf('mergepreview://diff:' . a:session.active_file)
@@ -308,9 +352,10 @@ function! mergepreview#ui#FocusHunk(session, idx) abort
     call cursor(1, 1)
     call search(l:pat, 'c')
     normal! zz
-  elseif a:session.mode ==# 'delta'
-    " delta --line-numbers prints the new-file line in a fixed gutter.
-    let l:pat = '\s\+' . l:hunk.start . '\%(\s\|│\)'
+  elseif a:session.mode ==# 'delta' || a:session.mode ==# 'difft'
+    " Both delta --line-numbers and difft print the new-file line number in
+    " a gutter. Search for the number bracketed by whitespace / box-drawing.
+    let l:pat = '\s\+' . l:hunk.start . '\%(\s\|│\||\)'
     call cursor(1, 1)
     call search(l:pat, 'c')
     normal! zz

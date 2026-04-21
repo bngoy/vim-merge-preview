@@ -5,11 +5,14 @@ three-pane layout showing changed files, the file diff, and per-file commit
 history for the branch vs. the branch it was cut from.
 
 ```
-+-- Files ---+---- File view ---------+--- Commits ------+
-|* M foo.py  | diff / delta / plain   |> abc1234 Add X   |
-|  A bar.go  |                        |> def4567 Fix edge|
-|  M baz.md  |                        |> 7f9a224 Refactor|
-+------------+------------------------+------------------+
++-- Files ----------+---- File view -----------+--- Commits ---------------+
+| Changes: feat vs  | diff / delta /           | Commits touching foo.py   |
+| main              | difft / plain            | (main..HEAD)              |
+|-------------------|                          |---------------------------|
+|* M foo.py         |                          |> abc1234 Add X            |
+|  A bar.go         |                          |> def4567 Fix edge         |
+|  M baz.md         |                          |> 7f9a224 Refactor         |
++-------------------+--------------------------+---------------------------+
 ```
 
 The base branch is auto-detected as the **nearest ancestor**: for every
@@ -41,8 +44,12 @@ git clone https://github.com/bngoy/vim-merge-preview \
   ~/.vim/pack/plugins/start/vim-merge-preview
 ```
 
-For the syntax-highlighted single-pane mode, install
-[`delta`](https://github.com/dandavison/delta).
+For the single-pane file-view modes, install
+[`delta`](https://github.com/dandavison/delta) (syntax-highlighted unified
+diff) and/or
+[`difftastic`](https://github.com/Wilfred/difftastic) (tree-sitter-based
+structural diff). Both are optional; the toggle skips modes whose tool
+isn't on `$PATH`.
 
 ## Usage
 
@@ -50,7 +57,7 @@ For the syntax-highlighted single-pane mode, install
 | -------------------- | ----------------------------------------------------------------- |
 | `:MergePreview`      | Open the layout in a new tab; base branch auto-detected.          |
 | `:MergePreview main` | Force a specific base branch.                                     |
-| `:MergePreviewToggle`| Cycle file view: `diff` → `delta` → `plain` → `diff`.             |
+| `:MergePreviewToggle`| Cycle file view: `diff` → `delta` → `difft` → `plain`. Missing tools are skipped. |
 | `:MergePreviewClose` | Tear down the layout.                                             |
 
 ### Key mappings (buffer-local)
@@ -71,7 +78,17 @@ For the syntax-highlighted single-pane mode, install
 let g:merge_preview_base = ''            " override base branch
 let g:merge_preview_delta_args =
       \ '--paging=never --line-numbers --file-style=omit --hunk-header-style=omit'
+let g:merge_preview_difft_args = '--color=always --background=dark'
 ```
+
+### File-view modes
+
+| Mode    | What it shows                                                      | Requires   |
+| ------- | ------------------------------------------------------------------ | ---------- |
+| `diff`  | Side-by-side Vim diff: merge-base version left, HEAD version right | (built-in) |
+| `delta` | Single-pane, syntax-highlighted unified diff                       | `delta`    |
+| `difft` | Single-pane structural (tree-sitter) diff                          | `difft`    |
+| `plain` | Single-pane raw unified diff with `filetype=diff`                  | (built-in) |
 
 See `:help mergepreview` for full documentation.
 

@@ -119,10 +119,7 @@ function! mergepreview#ToggleMode() abort
   if !s:HasSession()
     return
   endif
-  let l:modes = ['diff', 'plain']
-  if executable('delta')
-    let l:modes = ['diff', 'delta', 'plain']
-  endif
+  let l:modes = s:AvailableModes()
   let l:i = index(l:modes, s:session.mode)
   let l:next = l:modes[(l:i + 1) % len(l:modes)]
   let s:session.mode = l:next
@@ -130,6 +127,20 @@ function! mergepreview#ToggleMode() abort
   if !empty(s:session.active_file)
     call mergepreview#ui#RenderFileView(s:session)
   endif
+endfunction
+
+" The toggle cycles through these in order. Modes whose backing tool isn't
+" installed are skipped; `diff` (Vim built-in) and `plain` always work.
+function! s:AvailableModes() abort
+  let l:modes = ['diff']
+  if executable('delta')
+    call add(l:modes, 'delta')
+  endif
+  if executable('difft')
+    call add(l:modes, 'difft')
+  endif
+  call add(l:modes, 'plain')
+  return l:modes
 endfunction
 
 function! mergepreview#OpenFile(path) abort
