@@ -78,7 +78,9 @@ function! mergepreview#Open(...) abort
         \ 'view_winid': -1,
         \ 'view_bufnr': -1,
         \ 'prev_tabpage': tabpagenr(),
+        \ 'saved_diffopt': &diffopt,
         \ }
+  call s:ApplyDiffoptExtras()
 
   call mergepreview#ui#Open(s:session)
 
@@ -95,8 +97,25 @@ function! mergepreview#Close() abort
   if !s:HasSession()
     return
   endif
+  if has_key(s:session, 'saved_diffopt')
+    let &diffopt = s:session.saved_diffopt
+  endif
   call mergepreview#ui#Close(s:session)
   let s:session = {}
+endfunction
+
+" Layer the plugin's preferred diffopt values on top of the user's setting.
+" Values already present (or unsupported — e.g. inline:char on pre-9.1) are
+" silently skipped, so this degrades gracefully on older Vims.
+function! s:ApplyDiffoptExtras() abort
+  if empty(g:merge_preview_diffopt_extras) | return | endif
+  for l:opt in split(g:merge_preview_diffopt_extras, ',')
+    try
+      execute 'set diffopt+=' . l:opt
+    catch
+      " Vim version doesn't support this diffopt value.
+    endtry
+  endfor
 endfunction
 
 function! mergepreview#Session() abort
@@ -130,12 +149,9 @@ function! mergepreview#ToggleMode() abort
 endfunction
 
 " The toggle cycles through these in order. Modes whose backing tool isn't
-" installed are skipped; `diff` (Vim built-in) and `plain` always work.
+" installed are skipped; `diff` and `plain` are always available.
 function! s:AvailableModes() abort
   let l:modes = ['diff']
-  if executable('delta')
-    call add(l:modes, 'delta')
-  endif
   if executable('difft')
     call add(l:modes, 'difft')
   endif

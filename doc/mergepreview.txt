@@ -49,18 +49,18 @@ by setting |g:merge_preview_base|.
                         this order, skipping any whose tool is not on $PATH:
 
                           diff    - side-by-side Vim diff (built-in)
-                          delta   - single-pane, syntax-highlighted unified
-                                    diff (requires `delta`)
-                          difft   - single-pane, tree-sitter structural diff
-                                    (requires `difft`, i.e. difftastic)
+                          difft   - side-by-side structural diff (requires
+                                    `difft`, i.e. difftastic; uses
+                                    `--display json` and renders aligned
+                                    buffers with Vim text properties)
                           plain   - raw unified diff with filetype=diff
 
 ==============================================================================
 3. Layout                                               *mergepreview-layout*
 >
     +-- Files --------+---- File view -------+-- Commits ------------+
-    | Changes: feat   | diff / delta /       | Commits touching      |
-    | vs main         | difft / plain        | foo.py (main..HEAD)   |
+    | Changes: feat   | diff / difft /       | Commits touching      |
+    | vs main         | plain                | foo.py (main..HEAD)   |
     |-----------------|                      |-----------------------|
     |* M foo.py       |                      |> abc1234 Add X        |
     |  A bar.go       |                      |> def4567 Fix edge     |
@@ -102,35 +102,28 @@ Default: ''.
 When non-empty, used as the base branch unless an explicit argument is passed
 to |:MergePreview|.
 
-                                                *g:merge_preview_delta_args*
-Default: `--paging=never --line-numbers --file-style=omit --hunk-header-style=omit`
-Flags passed to `delta` when rendering the file view in `delta` mode.
+                                          *g:merge_preview_diffopt_extras*
+Default: `linematch:60,algorithm:histogram,indent-heuristic,inline:char`
+Comma-separated list of |diffopt| values the plugin appends on session open
+and restores on close. Values unsupported by the running Vim are silently
+skipped (e.g. `inline:char` was added in 9.1.1243).
 
-                                                *g:merge_preview_difft_args*
-Default: `--background=dark`
-Flags passed to `difft` when rendering the file view in `difft` mode. difft
-is wired in via GIT_EXTERNAL_DIFF so the plugin invokes
-`env GIT_EXTERNAL_DIFF='difft <args>' git diff --ext-diff <merge-base>...HEAD -- <file>`.
-
-All file-view modes render into regular scratch buffers (`buftype=nofile`)
-rather than terminal buffers, so all normal Vim motions, search, yank, and
-hunk-navigation (|]c| / |[c|) work. `delta` and `difft` auto-disable ANSI
-color output when stdout isn't a tty, which gives plain, syntax-highlightable
-text (`delta` → `filetype=diff`; `difft`'s structural output has no matching
-filetype and is left unset).
+All file-view modes render into ordinary buffers (`buftype=nofile`), not
+terminals. `diff` and `difft` both produce two vertical splits inside the
+file-view pane; `plain` and `difft`-fallback produce a single buffer. Hunk
+navigation (|]c| / |[c|), search, yank and the normal motions all work.
 
 ==============================================================================
 6. Dependencies                                         *mergepreview-dependencies*
 
 Required:
-  * Vim 8.1+ with |+terminal|.
+  * Vim 8.1+ with |+textprop| for `difft` highlight placement; `diff` and
+    `plain` work on earlier Vims.
   * `git` on $PATH.
 
 Optional:
-  * delta (https://github.com/dandavison/delta): enables the
-    syntax-highlighted single-pane mode.
   * difftastic / difft (https://github.com/Wilfred/difftastic): enables the
-    structural single-pane mode.
+    structural side-by-side mode. Needs v0.50+ for `--display json`.
   Missing tools are silently skipped by the toggle.
 
 ==============================================================================
@@ -145,5 +138,18 @@ All view data derives from a single merge-base:
 
 Blame results are filtered to commits within the range, so lines that existed
 on the base branch do not highlight a commit when jumping hunks.
+
+`difft` mode derives its layout from `difft --display json`:
+  * `aligned_lines` drives the row alignment between the two scratch
+    buffers. Where one side is null, a blank filler row is written so the
+    opposite row still matches up.
+  * `chunks[*][*].{lhs,rhs}.changes[]` drives per-line highlights via
+    |prop_add()|. Difft's `highlight` enum values are mapped to Vim groups
+    (novel -> DiffAdd, changed -> DiffText, delimiter -> Delimiter,
+    string-partial -> String, type-partial -> Type). Unknown values fall
+    back to DiffText.
+  * `scrollbind` and `cursorbind` (no |:diffthis|) keep the two panes in
+    sync — difft has already computed the alignment, so Vim's diff engine
+    would just re-diff the rows and fight difft's intent.
 
  vim:tw=78:ts=8:ft=help:norl:

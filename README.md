@@ -6,8 +6,8 @@ history for the branch vs. the branch it was cut from.
 
 ```
 +-- Files ----------+---- File view -----------+--- Commits ---------------+
-| Changes: feat vs  | diff / delta /           | Commits touching foo.py   |
-| main              | difft / plain            | (main..HEAD)              |
+| Changes: feat vs  | diff / difft / plain     | Commits touching foo.py   |
+| main              |                          | (main..HEAD)              |
 |-------------------|                          |---------------------------|
 |* M foo.py         |                          |> abc1234 Add X            |
 |  A bar.go         |                          |> def4567 Fix edge         |
@@ -33,7 +33,6 @@ to the `<merge-base>..HEAD` range).
 With [vim-plug](https://github.com/junegunn/vim-plug):
 
 ```vim
-Plug 'tpope/vim-fugitive'          " optional but recommended
 Plug 'bngoy/vim-merge-preview'
 ```
 
@@ -44,12 +43,9 @@ git clone https://github.com/bngoy/vim-merge-preview \
   ~/.vim/pack/plugins/start/vim-merge-preview
 ```
 
-For the single-pane file-view modes, install
-[`delta`](https://github.com/dandavison/delta) (syntax-highlighted unified
-diff) and/or
-[`difftastic`](https://github.com/Wilfred/difftastic) (tree-sitter-based
-structural diff). Both are optional; the toggle skips modes whose tool
-isn't on `$PATH`.
+For the structural file-view mode, install
+[`difftastic`](https://github.com/Wilfred/difftastic). The toggle skips
+`difft` mode when it isn't on `$PATH`.
 
 ## Usage
 
@@ -57,7 +53,7 @@ isn't on `$PATH`.
 | -------------------- | ----------------------------------------------------------------- |
 | `:MergePreview`      | Open the layout in a new tab; base branch auto-detected.          |
 | `:MergePreview main` | Force a specific base branch.                                     |
-| `:MergePreviewToggle`| Cycle file view: `diff` → `delta` → `difft` → `plain`. Missing tools are skipped. |
+| `:MergePreviewToggle`| Cycle file view: `diff` → `difft` → `plain`. Missing tools are skipped. |
 | `:MergePreviewClose` | Tear down the layout.                                             |
 
 ### Key mappings (buffer-local)
@@ -72,32 +68,39 @@ isn't on `$PATH`.
 | Commits     | `<CR>`     | `git show` the selected commit in a new tab.  |
 | Commits     | `za`/`zo`/`zc`/`zM`/`zR` | Native fold controls.           |
 
-### Options
-
-```vim
-let g:merge_preview_base = ''            " override base branch
-let g:merge_preview_delta_args =
-      \ '--paging=never --line-numbers --file-style=omit --hunk-header-style=omit'
-let g:merge_preview_difft_args = '--background=dark'
-```
-
-All file-view modes render into regular Vim scratch buffers — `j`/`k`,
-`/`-search, yanking, and `[c`/`]c` hunk navigation all work normally. No
-terminal buffers are used. Any ANSI color escapes emitted by `delta` or
-`difft` (e.g. when git is configured with `color.ui=always`) are
-stripped after capture so the output is clean plain text; syntax
-highlighting comes from `filetype=diff` for delta and plain modes.
-Both tools are also invoked with `--width=<current view pane width>` so
-their output fits the pane rather than defaulting to 80 columns.
-
 ### File-view modes
 
 | Mode    | What it shows                                                      | Requires   |
 | ------- | ------------------------------------------------------------------ | ---------- |
-| `diff`  | Side-by-side Vim diff: merge-base version left, HEAD version right | (built-in) |
-| `delta` | Single-pane, syntax-highlighted unified diff                       | `delta`    |
-| `difft` | Single-pane structural (tree-sitter) diff                          | `difft`    |
+| `diff`  | Side-by-side Vim diff: merge-base version left, HEAD version right, highlighted by Vim's internal diff engine | (built-in) |
+| `difft` | Side-by-side structural diff: two aligned buffers rendered from `difft --display json`, with structural highlights applied via Vim text properties | `difft`    |
 | `plain` | Single-pane raw unified diff with `filetype=diff`                  | (built-in) |
+
+Both `diff` and `difft` render into ordinary Vim scratch buffers (two
+vertical splits inside the file-view pane). All native motions (`j`/`k`,
+`/`-search, `]c`/`[c`, yanking) work. There are no terminal buffers.
+
+### Why no delta mode?
+
+Earlier versions had a `delta` mode that piped `git diff` through
+[`delta`](https://github.com/dandavison/delta). Delta's two value
+propositions — syntax highlighting and word-level diff — are both native
+features of modern Vim (`syntax on` + `diffopt+=inline:char`, Vim 9.1+).
+The plugin now sets a delta-inspired `diffopt` preset for you and drops
+the external tool; delta has no machine-readable output, so integrating
+it without a terminal buffer wasn't viable.
+
+### Options
+
+```vim
+let g:merge_preview_base = ''            " override base branch
+
+" Extra diffopt values layered on top of your setting while a session is
+" open. Saved and restored on MergePreviewClose. Unsupported values are
+" silently skipped (so older Vims without inline:char still work).
+let g:merge_preview_diffopt_extras =
+      \ 'linematch:60,algorithm:histogram,indent-heuristic,inline:char'
+```
 
 See `:help mergepreview` for full documentation.
 
@@ -127,11 +130,14 @@ the detected base have no diff. Most common causes:
   let g:merge_preview_base = 'some/team-branch'
   ```
 
-**`:MergePreviewToggle` shows an error message in the middle pane** — the
-external tool (`delta` or `difft`) exited non-zero. The error text from the
-tool is shown in the terminal buffer so you can see what went wrong
-(broken config, `delta` version mismatch, `difft` crash). Toggle again to
-advance to the next mode; the cycle still works.
+**`difft` mode falls back to `plain`** — the call to
+`difft --display json` failed (non-zero exit, empty stdout, or invalid
+JSON). Run it yourself to see the error:
+```sh
+GIT_EXTERNAL_DIFF='difft --display json' git diff --ext-diff <merge-base>...HEAD -- <file>
+```
+Common causes: outdated difft without `--display json` (added in v0.50);
+`difft` pointing at a non-difftastic binary.
 
 ## License
 

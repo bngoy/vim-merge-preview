@@ -253,6 +253,15 @@ function! mergepreview#git#HunksFor(merge_base, file) abort
   return l:hunks
 endfunction
 
+" Return the file contents at a given ref as a list of lines. When the file
+" doesn't exist at that ref (e.g. added on HEAD, not yet on the base), return
+" an empty list.
+function! mergepreview#git#FileAtRef(ref, file) abort
+  let l:r = s:Run('show ' . shellescape(a:ref . ':' . a:file))
+  if !l:r.ok | return [] | endif
+  return l:r.lines
+endfunction
+
 function! mergepreview#git#BlameShaForLine(file, line) abort
   let l:cmd = 'blame --porcelain -L ' . a:line . ',' . a:line
         \ . ' HEAD -- ' . shellescape(a:file)
