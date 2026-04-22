@@ -118,6 +118,12 @@ the detected base have no diff. Most common causes:
   let g:merge_preview_base = 'some/team-branch'
   ```
 
+**`:MergePreviewToggle` shows an error message in the middle pane** — the
+external tool (`delta` or `difft`) exited non-zero. The error text from the
+tool is shown in the terminal buffer so you can see what went wrong
+(broken config, `delta` version mismatch, `difft` crash). Toggle again to
+advance to the next mode; the cycle still works.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

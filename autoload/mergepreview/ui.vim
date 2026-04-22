@@ -191,6 +191,10 @@ function! mergepreview#ui#RenderFileView(session) abort
   if l:win <= 0 | return | endif
   execute l:win . 'wincmd w'
 
+  " If the previous render left a running terminal job (delta/difft), stop
+  " it so the upcoming buffer switch doesn't prompt or fail.
+  call s:StopTerminalJob(a:session.view_bufnr)
+
   " Close any diffsplit side window created by a previous render.
   call s:ResetViewWindow(a:session)
 
@@ -298,12 +302,7 @@ function! s:RenderDeltaMode(session) abort
         \ . shellescape(a:session.merge_base) . '...HEAD -- '
         \ . shellescape(a:session.active_file)
         \ . ' | delta ' . g:merge_preview_delta_args
-  " Replace the view buffer with a terminal running the pipeline.
-  enew
-  execute 'terminal ++curwin ++close ' . &shell . ' -c ' . shellescape(l:cmd)
-  let a:session.view_bufnr = bufnr('%')
-  " Terminal buffers are not modifiable; mappings apply to normal mode.
-  call s:SetFileViewMappings()
+  call s:RunInTerminalView(a:session, l:cmd)
 endfunction
 
 " Single-pane structural diff via difftastic. difft honors the 7-arg
@@ -316,10 +315,37 @@ function! s:RenderDifftMode(session) abort
         \ . ' git diff --ext-diff '
         \ . shellescape(a:session.merge_base) . '...HEAD -- '
         \ . shellescape(a:session.active_file)
-  enew
-  execute 'terminal ++curwin ++close ' . &shell . ' -c ' . shellescape(l:cmd)
+  call s:RunInTerminalView(a:session, l:cmd)
+endfunction
+
+" Run a shell pipeline inside the view window as a terminal buffer.
+"
+" Deliberately NOT using `++close`: if the pipeline exits fast (delta
+" misconfigured, difft crashing, command not found), `++close` would tear the
+" whole view window down, leaving the tab with only the files and commits
+" panels and a blank middle — exactly the "toggle and nothing shows up" bug.
+" Keeping the buffer around lets the user see the error text instead.
+"
+" `bufhidden=wipe` ensures we don't leak terminal buffers across toggles:
+" when the next render replaces this buffer via enew/terminal, it becomes
+" hidden and Vim wipes it. StopTerminalJob is called beforehand so the job
+" is already gone by the time the buffer is wiped.
+function! s:RunInTerminalView(session, cmd) abort
+  execute 'terminal ++curwin ' . &shell . ' -c ' . shellescape(a:cmd)
+  setlocal bufhidden=wipe
+  setlocal nobuflisted
   let a:session.view_bufnr = bufnr('%')
   call s:SetFileViewMappings()
+endfunction
+
+function! s:StopTerminalJob(bufnr) abort
+  if a:bufnr <= 0 || !bufexists(a:bufnr) | return | endif
+  if getbufvar(a:bufnr, '&buftype') !=# 'terminal' | return | endif
+  if !exists('*term_getjob') | return | endif
+  let l:job = term_getjob(a:bufnr)
+  if !empty(l:job) && job_status(l:job) ==# 'run'
+    call job_stop(l:job, 'term')
+  endif
 endfunction
 
 function! s:RenderPlainMode(session) abort
