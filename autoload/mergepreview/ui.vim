@@ -394,7 +394,10 @@ function! s:DifftFetchJson(session, file) abort
 endfunction
 
 function! s:DifftCommand(session, file) abort
-  return 'env GIT_EXTERNAL_DIFF=' . shellescape('difft --display json')
+  " difft gates JSON output behind DFT_UNSTABLE=yes (it's documented as
+  " subject to change, but the schema is stable enough for our use).
+  return 'env DFT_UNSTABLE=yes GIT_EXTERNAL_DIFF='
+        \ . shellescape('difft --display json')
         \ . ' git diff --ext-diff '
         \ . shellescape(a:session.merge_base) . '...HEAD -- '
         \ . shellescape(a:file)
