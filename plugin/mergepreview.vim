@@ -20,5 +20,6 @@ endif
 
 command! -nargs=? -complete=customlist,mergepreview#CompleteBase
       \ MergePreview call mergepreview#Open(<q-args>)
-command! MergePreviewClose  call mergepreview#Close()
-command! MergePreviewToggle call mergepreview#ToggleMode()
+command! MergePreviewClose      call mergepreview#Close()
+command! MergePreviewToggle     call mergepreview#ToggleMode()
+command! MergePreviewDifftDebug call mergepreview#ui#DifftDebug(mergepreview#Session())

@@ -309,12 +309,15 @@ function! s:RenderDifftMode(session) abort
   let l:file = a:session.active_file
   let l:status = s:StatusFor(a:session, l:file)
 
-  let l:entry = s:DifftFetchJson(a:session, l:file)
-  if empty(l:entry)
-    " JSON unavailable / parse failure / no changes — degrade to plain.
+  let l:result = s:DifftFetchJson(a:session, l:file)
+  if !get(l:result, 'ok', 0)
+    echohl WarningMsg
+    echomsg 'mergepreview: difft mode unavailable — ' . get(l:result, 'error', 'unknown') . '; falling back to plain'
+    echohl None
     call s:RenderPlainMode(a:session)
     return
   endif
+  let l:entry = l:result.entry
 
   let l:lhs_src = l:status !=# 'A'
         \ ? mergepreview#git#FileAtRef(a:session.merge_base, l:file)
@@ -355,24 +358,64 @@ function! s:RenderDifftMode(session) abort
   syncbind
 endfunction
 
+" Fetch and parse difft JSON for the given file. Returns a dict:
+"   {ok: 1, entry: {...}}  on success
+"   {ok: 0, error: '...', raw: '<first lines of stdout>'} on any failure.
+" The raw field is there so `:MergePreviewDifftDebug` can show it to the
+" user — silent fallbacks hide misconfigured difft versions, wrong binary,
+" JSON schema surprises, etc.
 function! s:DifftFetchJson(session, file) abort
-  let l:cmd = 'env GIT_EXTERNAL_DIFF=' . shellescape('difft --display json')
-        \ . ' git diff --ext-diff '
-        \ . shellescape(a:session.merge_base) . '...HEAD -- '
-        \ . shellescape(a:file)
+  let l:cmd = s:DifftCommand(a:session, a:file)
   let l:out = systemlist(l:cmd)
-  if v:shell_error != 0 || empty(l:out)
-    return {}
+  let l:raw = join(l:out[0:9], "\n")
+  if v:shell_error != 0
+    return {'ok': 0, 'error': 'difft exited ' . v:shell_error
+          \ . (empty(l:raw) ? '' : ': ' . l:raw), 'raw': l:raw}
+  endif
+  if empty(l:out)
+    return {'ok': 0, 'error': 'empty stdout (file identical at both refs?)', 'raw': ''}
   endif
   try
     let l:parsed = json_decode(join(l:out, "\n"))
   catch
-    return {}
+    return {'ok': 0, 'error': 'json_decode failed: ' . v:exception, 'raw': l:raw}
   endtry
-  if type(l:parsed) != v:t_list || empty(l:parsed)
-    return {}
+  " The documented schema is a top-level array; accept a bare object too
+  " in case the difft version differs.
+  if type(l:parsed) == v:t_list
+    if empty(l:parsed)
+      return {'ok': 0, 'error': 'empty JSON array', 'raw': l:raw}
+    endif
+    return {'ok': 1, 'entry': l:parsed[0]}
+  elseif type(l:parsed) == v:t_dict
+    return {'ok': 1, 'entry': l:parsed}
   endif
-  return l:parsed[0]
+  return {'ok': 0, 'error': 'unexpected JSON type ' . type(l:parsed), 'raw': l:raw}
+endfunction
+
+function! s:DifftCommand(session, file) abort
+  return 'env GIT_EXTERNAL_DIFF=' . shellescape('difft --display json')
+        \ . ' git diff --ext-diff '
+        \ . shellescape(a:session.merge_base) . '...HEAD -- '
+        \ . shellescape(a:file)
+endfunction
+
+" Exported so a :command can dump the raw output for troubleshooting.
+function! mergepreview#ui#DifftDebug(session) abort
+  if empty(a:session.active_file)
+    echo 'mergepreview: open a file first'
+    return
+  endif
+  let l:cmd = s:DifftCommand(a:session, a:session.active_file)
+  let l:out = systemlist(l:cmd)
+  tabnew
+  call s:ScratchBuf('mergepreview://difft-debug')
+  setlocal modifiable
+  call setline(1, ['# difft JSON debug', '# file: ' . a:session.active_file,
+        \ '# exit: ' . v:shell_error, '# cmd: ' . l:cmd, ''])
+  call append(line('$'), l:out)
+  setlocal nomodifiable
+  setlocal filetype=json
 endfunction
 
 " Walk aligned_lines to produce two row-aligned arrays and per-side line→row
