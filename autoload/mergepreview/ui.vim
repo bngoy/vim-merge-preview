@@ -326,15 +326,28 @@ endfunction
 " panels and a blank middle — exactly the "toggle and nothing shows up" bug.
 " Keeping the buffer around lets the user see the error text instead.
 "
-" `bufhidden=wipe` ensures we don't leak terminal buffers across toggles:
-" when the next render replaces this buffer via enew/terminal, it becomes
-" hidden and Vim wipes it. StopTerminalJob is called beforehand so the job
-" is already gone by the time the buffer is wiped.
+" Uses term_start() with an args list instead of `:terminal <string>`: the
+" `:terminal` Ex command re-parses its argument with Vim-level quoting, so a
+" pipeline containing shellescape()'d single quotes gets mangled before the
+" shell sees it (e.g. zsh reports "unmatched '"). Passing [shell, '-c', cmd]
+" as a list goes straight to exec() with no reparsing.
+"
+" `bufhidden=wipe` ensures we don't leak terminal buffers across toggles;
+" `term_kill=term` makes Vim send SIGTERM if the buffer is wiped while the
+" job is still running.
 function! s:RunInTerminalView(session, cmd) abort
-  execute 'terminal ++curwin ' . &shell . ' -c ' . shellescape(a:cmd)
+  let l:shell = !empty(&shell) ? &shell : '/bin/sh'
+  let l:bufnr = term_start([l:shell, '-c', a:cmd], {
+        \ 'curwin': 1,
+        \ 'norestore': 1,
+        \ 'term_kill': 'term',
+        \ })
+  if l:bufnr <= 0
+    return
+  endif
   setlocal bufhidden=wipe
   setlocal nobuflisted
-  let a:session.view_bufnr = bufnr('%')
+  let a:session.view_bufnr = l:bufnr
   call s:SetFileViewMappings()
 endfunction
 
