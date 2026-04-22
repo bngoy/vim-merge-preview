@@ -78,8 +78,14 @@ isn't on `$PATH`.
 let g:merge_preview_base = ''            " override base branch
 let g:merge_preview_delta_args =
       \ '--paging=never --line-numbers --file-style=omit --hunk-header-style=omit'
-let g:merge_preview_difft_args = '--color=always --background=dark'
+let g:merge_preview_difft_args = '--background=dark'
 ```
+
+All file-view modes render into regular Vim scratch buffers — `j`/`k`,
+`/`-search, yanking, and `[c`/`]c` hunk navigation all work normally. No
+terminal buffers are used; `delta` and `difft` auto-disable their ANSI
+color output when their stdout isn't a tty, so the buffer contents are
+plain text.
 
 ### File-view modes
 

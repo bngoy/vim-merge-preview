@@ -191,10 +191,6 @@ function! mergepreview#ui#RenderFileView(session) abort
   if l:win <= 0 | return | endif
   execute l:win . 'wincmd w'
 
-  " If the previous render left a running terminal job (delta/difft), stop
-  " it so the upcoming buffer switch doesn't prompt or fail.
-  call s:StopTerminalJob(a:session.view_bufnr)
-
   " Close any diffsplit side window created by a previous render.
   call s:ResetViewWindow(a:session)
 
@@ -302,63 +298,42 @@ function! s:RenderDeltaMode(session) abort
         \ . shellescape(a:session.merge_base) . '...HEAD -- '
         \ . shellescape(a:session.active_file)
         \ . ' | delta ' . g:merge_preview_delta_args
-  call s:RunInTerminalView(a:session, l:cmd)
+  " delta and difft both auto-disable color when stdout isn't a tty, so
+  " piping into :read ! gives plain text suitable for a scratch buffer.
+  call s:RunIntoScratchView(a:session, l:cmd,
+        \ 'mergepreview://delta:' . a:session.active_file, 'diff')
 endfunction
 
 " Single-pane structural diff via difftastic. difft honors the 7-arg
 " GIT_EXTERNAL_DIFF protocol directly, so wiring it through `git diff
 " --ext-diff` is the simplest way to get the branch-range diff rendered.
 function! s:RenderDifftMode(session) abort
-  let l:args = get(g:, 'merge_preview_difft_args',
-        \ '--color=always --background=dark')
+  let l:args = get(g:, 'merge_preview_difft_args', '--background=dark')
   let l:cmd = 'env GIT_EXTERNAL_DIFF=' . shellescape('difft ' . l:args)
         \ . ' git diff --ext-diff '
         \ . shellescape(a:session.merge_base) . '...HEAD -- '
         \ . shellescape(a:session.active_file)
-  call s:RunInTerminalView(a:session, l:cmd)
+  " difft's structural output doesn't map to filetype=diff; leave unset so
+  " Vim treats it as plain text but still navigable.
+  call s:RunIntoScratchView(a:session, l:cmd,
+        \ 'mergepreview://difft:' . a:session.active_file, '')
 endfunction
 
-" Run a shell pipeline inside the view window as a terminal buffer.
-"
-" Deliberately NOT using `++close`: if the pipeline exits fast (delta
-" misconfigured, difft crashing, command not found), `++close` would tear the
-" whole view window down, leaving the tab with only the files and commits
-" panels and a blank middle — exactly the "toggle and nothing shows up" bug.
-" Keeping the buffer around lets the user see the error text instead.
-"
-" Uses term_start() with an args list instead of `:terminal <string>`: the
-" `:terminal` Ex command re-parses its argument with Vim-level quoting, so a
-" pipeline containing shellescape()'d single quotes gets mangled before the
-" shell sees it (e.g. zsh reports "unmatched '"). Passing [shell, '-c', cmd]
-" as a list goes straight to exec() with no reparsing.
-"
-" `bufhidden=wipe` ensures we don't leak terminal buffers across toggles;
-" `term_kill=term` makes Vim send SIGTERM if the buffer is wiped while the
-" job is still running.
-function! s:RunInTerminalView(session, cmd) abort
-  let l:shell = !empty(&shell) ? &shell : '/bin/sh'
-  let l:bufnr = term_start([l:shell, '-c', a:cmd], {
-        \ 'curwin': 1,
-        \ 'norestore': 1,
-        \ 'term_kill': 'term',
-        \ })
-  if l:bufnr <= 0
-    return
+" Run a shell pipeline and write its stdout into a scratch buffer in the
+" view window. Unlike terminal mode, the result is a regular Vim buffer: all
+" motions, search, yank, and [c/]c work the same as in plain mode.
+function! s:RunIntoScratchView(session, cmd, name, filetype) abort
+  enew
+  call s:ScratchBuf(a:name)
+  setlocal modifiable
+  silent execute 'read !' . a:cmd
+  silent 1delete _
+  if !empty(a:filetype)
+    execute 'setlocal filetype=' . a:filetype
   endif
-  setlocal bufhidden=wipe
-  setlocal nobuflisted
-  let a:session.view_bufnr = l:bufnr
+  setlocal nomodifiable
+  let a:session.view_bufnr = bufnr('%')
   call s:SetFileViewMappings()
-endfunction
-
-function! s:StopTerminalJob(bufnr) abort
-  if a:bufnr <= 0 || !bufexists(a:bufnr) | return | endif
-  if getbufvar(a:bufnr, '&buftype') !=# 'terminal' | return | endif
-  if !exists('*term_getjob') | return | endif
-  let l:job = term_getjob(a:bufnr)
-  if !empty(l:job) && job_status(l:job) ==# 'run'
-    call job_stop(l:job, 'term')
-  endif
 endfunction
 
 function! s:RenderPlainMode(session) abort
