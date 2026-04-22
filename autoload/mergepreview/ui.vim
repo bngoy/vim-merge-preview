@@ -294,12 +294,11 @@ function! s:FiletypeFor(file) abort
 endfunction
 
 function! s:RenderDeltaMode(session) abort
+  let l:w = s:ViewWidth(a:session)
   let l:cmd = 'git -c core.pager=cat diff '
         \ . shellescape(a:session.merge_base) . '...HEAD -- '
         \ . shellescape(a:session.active_file)
-        \ . ' | delta ' . g:merge_preview_delta_args
-  " delta and difft both auto-disable color when stdout isn't a tty, so
-  " piping into :read ! gives plain text suitable for a scratch buffer.
+        \ . ' | delta --width=' . l:w . ' ' . g:merge_preview_delta_args
   call s:RunIntoScratchView(a:session, l:cmd,
         \ 'mergepreview://delta:' . a:session.active_file, 'diff')
 endfunction
@@ -308,26 +307,40 @@ endfunction
 " GIT_EXTERNAL_DIFF protocol directly, so wiring it through `git diff
 " --ext-diff` is the simplest way to get the branch-range diff rendered.
 function! s:RenderDifftMode(session) abort
+  let l:w = s:ViewWidth(a:session)
   let l:args = get(g:, 'merge_preview_difft_args', '--background=dark')
+        \ . ' --width=' . l:w
   let l:cmd = 'env GIT_EXTERNAL_DIFF=' . shellescape('difft ' . l:args)
         \ . ' git diff --ext-diff '
         \ . shellescape(a:session.merge_base) . '...HEAD -- '
         \ . shellescape(a:session.active_file)
-  " difft's structural output doesn't map to filetype=diff; leave unset so
-  " Vim treats it as plain text but still navigable.
   call s:RunIntoScratchView(a:session, l:cmd,
         \ 'mergepreview://difft:' . a:session.active_file, '')
+endfunction
+
+function! s:ViewWidth(session) abort
+  let l:w = winwidth(win_id2win(a:session.view_winid))
+  return l:w > 0 ? l:w : 80
 endfunction
 
 " Run a shell pipeline and write its stdout into a scratch buffer in the
 " view window. Unlike terminal mode, the result is a regular Vim buffer: all
 " motions, search, yank, and [c/]c work the same as in plain mode.
+"
+" ANSI escapes are stripped after reading so colored output from delta or
+" difft (forced by e.g. git's color.ui=always, or user-set --color=always in
+" *_args) renders as plain text instead of literal `\e[...m` sequences. The
+" buffer's filetype — set below — then provides syntax highlighting.
 function! s:RunIntoScratchView(session, cmd, name, filetype) abort
   enew
   call s:ScratchBuf(a:name)
   setlocal modifiable
   silent execute 'read !' . a:cmd
   silent 1delete _
+  " CSI sequences: ESC [ <params> <final-byte>
+  silent! keepjumps keeppatterns %substitute/\%x1b\[[0-9;?]*[a-zA-Z]//ge
+  " OSC sequences: ESC ] ... BEL (rare; emitted by some color themes).
+  silent! keepjumps keeppatterns %substitute/\%x1b\][^\x07]*\x07//ge
   if !empty(a:filetype)
     execute 'setlocal filetype=' . a:filetype
   endif

@@ -83,9 +83,12 @@ let g:merge_preview_difft_args = '--background=dark'
 
 All file-view modes render into regular Vim scratch buffers — `j`/`k`,
 `/`-search, yanking, and `[c`/`]c` hunk navigation all work normally. No
-terminal buffers are used; `delta` and `difft` auto-disable their ANSI
-color output when their stdout isn't a tty, so the buffer contents are
-plain text.
+terminal buffers are used. Any ANSI color escapes emitted by `delta` or
+`difft` (e.g. when git is configured with `color.ui=always`) are
+stripped after capture so the output is clean plain text; syntax
+highlighting comes from `filetype=diff` for delta and plain modes.
+Both tools are also invoked with `--width=<current view pane width>` so
+their output fits the pane rather than defaulting to 80 columns.
 
 ### File-view modes
 
