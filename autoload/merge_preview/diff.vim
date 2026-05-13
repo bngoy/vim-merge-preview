@@ -1,0 +1,167 @@
+" merge_preview#diff: load the right-pane vimdiff views.
+
+" Show working tree vs base for the given file entry.
+function! merge_preview#diff#show_default(entry) abort
+  let l:state = merge_preview#ui#state()
+  let l:base = l:state.base
+  let l:path = a:entry.path
+  let l:status = a:entry.status
+  let l:oldpath = !empty(a:entry.oldpath) ? a:entry.oldpath : l:path
+
+  call merge_preview#ui#close_diff_area()
+
+  if merge_preview#git#is_submodule(l:path)
+    let l:anchor = merge_preview#ui#open_diff_anchor()
+    call win_gotoid(l:anchor)
+    call s:populate_scratch('[submodule] ' . l:path,
+          \ ['[submodule]', '', l:path, '', 'Submodule diffs are not supported.'], '')
+    return
+  endif
+
+  if merge_preview#git#is_binary(l:base, '', l:path)
+    let l:anchor = merge_preview#ui#open_diff_anchor()
+    call win_gotoid(l:anchor)
+    call s:populate_scratch('[binary] ' . l:path,
+          \ ['[binary file]', '', l:path, '', 'Diff not shown for binary files.'], '')
+    return
+  endif
+
+  let l:anchor = merge_preview#ui#open_diff_anchor()
+  call win_gotoid(l:anchor)
+
+  if l:status ==# 'A'
+    call s:load_working_file(l:path)
+    let l:right_ft = &filetype
+    diffthis
+    leftabove vnew
+    call s:populate_scratch('[base: ' . l:base . '] ' . l:path . ' (new file)', [], l:right_ft)
+    diffthis
+  elseif l:status ==# 'D'
+    let l:blob = merge_preview#git#show_blob(l:base, l:oldpath)
+    call s:populate_scratch('[base: ' . l:base . '] ' . l:oldpath,
+          \ l:blob.ok ? l:blob.lines : [], l:oldpath)
+    diffthis
+    rightbelow vnew
+    call s:populate_scratch('[working] ' . l:path . ' (deleted)', [], l:oldpath)
+    diffthis
+  else
+    call s:load_working_file(l:path)
+    let l:right_ft = &filetype
+    diffthis
+    leftabove vnew
+    let l:blob = merge_preview#git#show_blob(l:base, l:oldpath)
+    if !l:blob.ok
+      call s:populate_scratch('[base: ' . l:base . '] ' . l:oldpath . ' (not in base)',
+            \ [], l:right_ft)
+    else
+      call s:populate_scratch('[base: ' . l:base . '] ' . l:oldpath, l:blob.lines, l:right_ft)
+    endif
+    diffthis
+  endif
+endfunction
+
+" Show <sha> vs its parent for the given path.
+function! merge_preview#diff#show_commit(sha, current_path) abort
+  let l:state = merge_preview#ui#state()
+  call merge_preview#ui#close_diff_area()
+
+  let l:parents = merge_preview#git#commit_parents(a:sha)
+
+  let l:anchor = merge_preview#ui#open_diff_anchor()
+  call win_gotoid(l:anchor)
+
+  if empty(l:parents)
+    let l:blob = merge_preview#git#show_blob(a:sha, a:current_path)
+    let l:lines = ['[Initial commit ' . a:sha . ' — no parent to diff against]', '']
+          \ + (l:blob.ok ? l:blob.lines : [])
+    call s:populate_scratch('[' . a:sha . '] ' . a:current_path, l:lines, a:current_path)
+    return
+  endif
+
+  let l:is_merge = len(l:parents) > 1
+  let l:notice = l:is_merge
+        \ ? ['[Merge commit — diffing against first parent ' . l:parents[0] . ']', '']
+        \ : []
+  let l:parent = a:sha . '^1'
+
+  let l:parent_path = merge_preview#git#rename_at_commit(a:sha, a:current_path)
+
+  " Right side: child version.
+  let l:child_blob = merge_preview#git#show_blob(a:sha, a:current_path)
+  let l:right_lines = l:notice + (l:child_blob.ok ? l:child_blob.lines : [])
+  let l:right_name = '[' . a:sha . '] ' . a:current_path
+        \ . (l:child_blob.ok ? '' : ' (not in commit)')
+  call s:populate_scratch(l:right_name, l:right_lines, a:current_path)
+  diffthis
+
+  " Left side: parent version.
+  leftabove vnew
+  let l:parent_blob = merge_preview#git#show_blob(l:parent, l:parent_path)
+  let l:left_lines = l:notice + (l:parent_blob.ok ? l:parent_blob.lines : [])
+  let l:left_name = '[' . a:sha . '^] ' . l:parent_path
+        \ . (l:parent_blob.ok ? '' : ' (not in parent)')
+  call s:populate_scratch(l:left_name, l:left_lines, a:current_path)
+  diffthis
+endfunction
+
+function! merge_preview#diff#reset_to_default() abort
+  let l:state = merge_preview#ui#state()
+  if empty(l:state.active_path)
+    return
+  endif
+  for l:e in l:state.files
+    if l:e.path ==# l:state.active_path
+      call merge_preview#diff#show_default(l:e)
+      return
+    endif
+  endfor
+endfunction
+
+" --- internals --------------------------------------------------------------
+
+function! s:load_working_file(path) abort
+  let l:abspath = merge_preview#ui#state().repo_root . '/' . a:path
+  execute 'silent edit ' . fnameescape(l:abspath)
+endfunction
+
+" Replace the current buffer with a scratch holding the given lines.
+" path_for_ft (optional) gives a path used to derive filetype highlighting,
+" or a literal filetype name. Empty = no syntax.
+function! s:populate_scratch(name, lines, path_for_ft) abort
+  setlocal modifiable noreadonly
+  setlocal buftype=nofile
+  setlocal bufhidden=wipe
+  setlocal nobuflisted
+  setlocal noswapfile
+  let b:merge_preview_scratch = 1
+
+  silent! %delete _
+  if !empty(a:lines)
+    call setline(1, a:lines)
+  endif
+
+  execute 'silent file ' . fnameescape(a:name)
+  setlocal fileformat=unix
+  setlocal nomodifiable readonly
+
+  if !empty(a:path_for_ft)
+    call s:apply_filetype(a:path_for_ft)
+  endif
+endfunction
+
+" path_or_ft can be a filetype name (no dot, no slash) or a path-with-extension.
+function! s:apply_filetype(path_or_ft) abort
+  if a:path_or_ft !~# '[./]' && a:path_or_ft !~# '\s'
+    " Looks like a bare filetype name (e.g. 'python').
+    let &l:filetype = a:path_or_ft
+    return
+  endif
+  " Trigger Vim's filetype detection using the path as <afile>.
+  let l:save_ei = &eventignore
+  set eventignore=
+  try
+    silent execute 'doautocmd filetypedetect BufRead ' . fnameescape(a:path_or_ft)
+  finally
+    let &eventignore = l:save_ei
+  endtry
+endfunction

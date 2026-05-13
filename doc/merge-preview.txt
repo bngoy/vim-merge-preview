@@ -1,0 +1,130 @@
+*merge-preview.txt*	Navigate branch changes with vimdiff
+
+==============================================================================
+INTRODUCTION                                              *merge-preview*
+
+vim-merge-preview opens a side-by-side workspace that lets you walk every
+change between the current branch and the branch it was checked out from.
+A files panel lists every changed file (committed, staged, and unstaged
+combined). A commits panel lists the commits on the current branch that
+touched the selected file. The right-hand area shows the diff with vimdiff.
+
+Requires Vim 8.0 or newer. Neovim is not supported.
+
+==============================================================================
+COMMANDS                                          *merge-preview-commands*
+
+                                                            *:MergePreview*
+:MergePreview [{branch}]
+	Open the merge-preview workspace. With no argument the base branch
+	is auto-detected (see |merge-preview-base|). With {branch}, that
+	ref is used as the base.
+
+                                                       *:MergePreviewClose*
+:MergePreviewClose
+	Close the workspace, restore 'diffopt', and wipe scratch buffers.
+
+                                                     *:MergePreviewRefresh*
+:MergePreviewRefresh
+	Re-read git state and repopulate both panels. Equivalent to
+	pressing 'r' inside a panel.
+
+==============================================================================
+BASE BRANCH DETECTION                              *merge-preview-base*
+
+The base branch is the one the current branch was checked out from. It is
+chosen by the first rule that succeeds:
+
+1. {branch} argument to :MergePreview, if given.
+2. |g:merge_preview_base_branch|, if set and the ref exists.
+3. The upstream of the current branch (@{u}).
+4. The reflog entry "branch: Created from <ref>" or
+   "checkout: moving from <ref> to <current>".
+5. The first existing ref in |g:merge_preview_default_bases|.
+
+If none of those resolve, an error is shown and you can pass the base
+explicitly: :MergePreview <branch>.
+
+The merge-base of HEAD and the resolved base is captured once when the
+workspace opens, so diffs are stable even if the base ref advances.
+
+==============================================================================
+PANELS AND MAPPINGS                              *merge-preview-mappings*
+
+Files panel (top-left):
+	<CR>	Open the file under the cursor: diff working tree vs base.
+	r	Refresh both panels from git.
+	q	Close the workspace.
+	?	Print key help.
+
+Commits panel (bottom-left):
+	<CR>	Open the commit under the cursor: diff that commit vs its
+		parent for the active file.
+	R	Reset the diff to the default working-tree-vs-base view.
+	r	Refresh both panels from git.
+	q	Close the workspace.
+
+File status letters in the files panel are the standard git diff codes:
+M modified, A added, D deleted, R renamed, C copied, T type-change,
+U unmerged.
+
+==============================================================================
+DIFF BEHAVIOR                                       *merge-preview-diff*
+
+When a file is activated:
+
+  - Modified or renamed: left side shows the file at the base branch
+    (using the old path for renames), right side opens the actual working
+    file (editable).
+  - New on branch (A): left side shows an empty "[new file]" buffer.
+  - Deleted on branch (D): right side shows an empty "[deleted]" buffer.
+  - Binary: a placeholder buffer is shown instead of a diff.
+  - Submodule: a placeholder buffer is shown.
+
+When a commit is activated, both sides are read-only scratch buffers:
+left is the file at the commit's parent, right is the file at the commit.
+For merge commits the first parent is used and a notice is shown at the
+top of each buffer. For root commits (no parent) the file at the commit
+is shown without a diff.
+
+The right-hand working-file buffer is the real file: edits and writes
+behave normally. Closing the workspace does not save those edits.
+
+==============================================================================
+CONFIGURATION                                   *merge-preview-config*
+
+                                              *g:merge_preview_base_branch*
+String. Default: ''. If non-empty and the ref exists, used as the base
+branch (overrides upstream and reflog).
+
+                                            *g:merge_preview_default_bases*
+List of strings. Default: ['main', 'master', 'develop']. Tried in order
+as a last-resort fallback when nothing else resolves.
+
+                                              *g:merge_preview_files_width*
+Number. Default: 40. Width in columns of the left panel column.
+
+                                          *g:merge_preview_commits_height*
+Number. Default: 15. Height in rows of the bottom-left commits panel.
+
+                                                 *g:merge_preview_use_tab*
+Number. Default: 0. If 1, the workspace opens in a new tab. If 0 it
+replaces the current window layout.
+
+                                                  *g:merge_preview_diffopt*
+String. Default: 'internal,filler,closeoff,vertical,algorithm:histogram,
+indent-heuristic'. Value applied to 'diffopt' while the workspace is open.
+The previous 'diffopt' is restored on close.
+
+==============================================================================
+LIMITATIONS                                     *merge-preview-limitations*
+
+  - Non-UTF-8 file contents may not display correctly.
+  - Submodule contents are not diffed.
+  - Merge commits diff against the first parent only.
+  - Rename history is detected per-commit but |git-log| does not use
+    --follow, so commits that touched a file under a previous name only
+    appear if the rename was detected by the recorded -M score.
+
+==============================================================================
+vim:tw=78:ts=8:noet:ft=help:norl:
