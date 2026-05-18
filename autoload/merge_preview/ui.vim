@@ -9,18 +9,65 @@ function! s:fresh_state() abort
         \ 'repo_root': '',
         \ 'base': '',
         \ 'merge_base': '',
+        \ 'mode': 'local',
         \ 'tabnr': 0,
         \ 'win_files': -1,
         \ 'win_commits': -1,
         \ 'buf_files': -1,
         \ 'buf_commits': -1,
         \ 'files': [],
+        \ 'tree': {},
+        \ 'tree_nodes': [],
+        \ 'collapsed': {},
         \ 'active_path': '',
         \ 'active_oldpath': '',
         \ 'active_status': '',
         \ 'commits': [],
         \ 'saved_diffopt': '',
+        \ 'saved_laststatus': -1,
         \ }
+endfunction
+
+let s:VALID_MODES = ['local', 'branch']
+
+function! merge_preview#ui#mode() abort
+  return get(s:state, 'mode', 'local')
+endfunction
+
+function! merge_preview#ui#base() abort
+  return get(s:state, 'base', '')
+endfunction
+
+" Statusline expression for the files panel.
+function! merge_preview#ui#statusline() abort
+  let l:m = merge_preview#ui#mode()
+  let l:label = l:m ==# 'branch' ? 'branch-to-branch' : 'local changes'
+  return ' merge-preview  mode: ' . l:label . '  base: ' . merge_preview#ui#base() . ' '
+endfunction
+
+function! merge_preview#ui#set_mode(mode) abort
+  if !s:state.active
+    return
+  endif
+  let l:m = a:mode
+  if index(s:VALID_MODES, l:m) < 0
+    call merge_preview#util#error('unknown mode: ' . l:m . ' (use local or branch)')
+    return
+  endif
+  if l:m ==# s:state.mode
+    return
+  endif
+  let s:state.mode = l:m
+  call merge_preview#files#populate()
+  if !empty(s:state.active_path)
+    call merge_preview#diff#reset_to_default()
+    call merge_preview#commits#populate(s:state.active_path, s:state.active_oldpath)
+  endif
+  call win_gotoid(s:state.win_files)
+endfunction
+
+function! merge_preview#ui#toggle_mode() abort
+  call merge_preview#ui#set_mode(s:state.mode ==# 'local' ? 'branch' : 'local')
 endfunction
 
 if !exists('s:state')
@@ -69,6 +116,8 @@ function! merge_preview#ui#open(base_override) abort
 
   let s:state.saved_diffopt = &diffopt
   let &diffopt = g:merge_preview_diffopt
+  let s:state.saved_laststatus = &laststatus
+  set laststatus=2
 
   if g:merge_preview_use_tab
     tabnew
@@ -122,6 +171,9 @@ function! merge_preview#ui#close() abort
   if !empty(s:state.saved_diffopt)
     let &diffopt = s:state.saved_diffopt
   endif
+  if s:state.saved_laststatus >= 0
+    let &laststatus = s:state.saved_laststatus
+  endif
 
   let s:state = s:fresh_state()
 endfunction
@@ -142,17 +194,22 @@ endfunction
 " --- layout -----------------------------------------------------------------
 
 function! s:build_layout() abort
-  " Files panel: full-height column on the left.
+  " Files panel: fixed-width, full-height column on the left.
   topleft vnew
   execute 'vertical resize ' . g:merge_preview_files_width
   call s:apply_panel('files', '[MergePreview Files]', 'mergepreviewfiles')
+  " winfixwidth keeps the panel a stable size when diff windows open and
+  " close; the user can still resize it manually (drag or :vertical resize).
+  setlocal winfixwidth
+  let &l:statusline = '%!merge_preview#ui#statusline()'
   let s:state.win_files = win_getid()
   let s:state.buf_files = bufnr('%')
 
-  " Commits panel: horizontal split below files, in the same column.
+  " Commits panel: fixed-height horizontal split below files.
   rightbelow new
   execute 'resize ' . g:merge_preview_commits_height
   call s:apply_panel('commits', '[MergePreview Commits]', 'mergepreviewcommits')
+  setlocal winfixheight
   let s:state.win_commits = win_getid()
   let s:state.buf_commits = bufnr('%')
 endfunction

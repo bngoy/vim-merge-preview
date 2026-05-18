@@ -1,63 +1,88 @@
 " merge_preview#diff: load the right-pane vimdiff views.
 
-" Show working tree vs base for the given file entry.
+" Show the default diff for a file entry.
+"   local  mode: file at the branch point  vs  the working tree (editable).
+"   branch mode: file at the branch point  vs  the file at HEAD (read-only).
 function! merge_preview#diff#show_default(entry) abort
   let l:state = merge_preview#ui#state()
-  let l:base = l:state.base
+  let l:base_label = l:state.base
+  let l:base_rev = !empty(l:state.merge_base) ? l:state.merge_base : l:state.base
   let l:path = a:entry.path
   let l:status = a:entry.status
-  let l:oldpath = !empty(a:entry.oldpath) ? a:entry.oldpath : l:path
+  let l:oldpath = !empty(get(a:entry, 'oldpath', '')) ? a:entry.oldpath : l:path
+  let l:branch_mode = (l:state.mode ==# 'branch')
 
   call merge_preview#ui#close_diff_area()
 
   if merge_preview#git#is_submodule(l:path)
-    let l:anchor = merge_preview#ui#open_diff_anchor()
-    call win_gotoid(l:anchor)
+    call win_gotoid(merge_preview#ui#open_diff_anchor())
     call s:populate_scratch('[submodule] ' . l:path,
           \ ['[submodule]', '', l:path, '', 'Submodule diffs are not supported.'], '')
     return
   endif
 
-  if merge_preview#git#is_binary(l:base, '', l:path)
-    let l:anchor = merge_preview#ui#open_diff_anchor()
-    call win_gotoid(l:anchor)
+  if merge_preview#git#is_binary(l:base_rev, '', l:path)
+    call win_gotoid(merge_preview#ui#open_diff_anchor())
     call s:populate_scratch('[binary] ' . l:path,
           \ ['[binary file]', '', l:path, '', 'Diff not shown for binary files.'], '')
     return
   endif
 
-  let l:anchor = merge_preview#ui#open_diff_anchor()
-  call win_gotoid(l:anchor)
+  call win_gotoid(merge_preview#ui#open_diff_anchor())
+
+  let l:left_blob = merge_preview#git#show_blob(l:base_rev, l:oldpath)
 
   if l:status ==# 'A'
-    call s:load_working_file(l:path)
-    let l:right_ft = &filetype
+    " New on branch: nothing on the base side.
+    call s:right_side(l:branch_mode, l:path, l:base_label)
+    let l:ft = s:current_ft(l:path)
     diffthis
     leftabove vnew
-    call s:populate_scratch('[base: ' . l:base . '] ' . l:path . ' (new file)', [], l:right_ft)
+    call s:populate_scratch('[base: ' . l:base_label . '] ' . l:path . ' (new file)',
+          \ [], l:ft)
     diffthis
   elseif l:status ==# 'D'
-    let l:blob = merge_preview#git#show_blob(l:base, l:oldpath)
-    call s:populate_scratch('[base: ' . l:base . '] ' . l:oldpath,
-          \ l:blob.ok ? l:blob.lines : [], l:oldpath)
+    " Deleted on branch: nothing on the working/HEAD side.
+    call s:populate_scratch('[base: ' . l:base_label . '] ' . l:oldpath,
+          \ l:left_blob.ok ? l:left_blob.lines : [], l:oldpath)
     diffthis
     rightbelow vnew
-    call s:populate_scratch('[working] ' . l:path . ' (deleted)', [], l:oldpath)
+    let l:rname = l:branch_mode ? '[HEAD] ' : '[working] '
+    call s:populate_scratch(l:rname . l:path . ' (deleted)', [], l:oldpath)
     diffthis
   else
-    call s:load_working_file(l:path)
-    let l:right_ft = &filetype
+    call s:right_side(l:branch_mode, l:path, l:base_label)
+    let l:ft = s:current_ft(l:path)
     diffthis
     leftabove vnew
-    let l:blob = merge_preview#git#show_blob(l:base, l:oldpath)
-    if !l:blob.ok
-      call s:populate_scratch('[base: ' . l:base . '] ' . l:oldpath . ' (not in base)',
-            \ [], l:right_ft)
+    if !l:left_blob.ok
+      call s:populate_scratch('[base: ' . l:base_label . '] ' . l:oldpath . ' (not in base)',
+            \ [], l:ft)
     else
-      call s:populate_scratch('[base: ' . l:base . '] ' . l:oldpath, l:blob.lines, l:right_ft)
+      call s:populate_scratch('[base: ' . l:base_label . '] ' . l:oldpath,
+            \ l:left_blob.lines, l:ft)
     endif
     diffthis
   endif
+endfunction
+
+" Load the right-hand side: the real working file (local mode, editable) or
+" a read-only scratch of the file at HEAD (branch mode).
+function! s:right_side(branch_mode, path, base_label) abort
+  if a:branch_mode
+    let l:blob = merge_preview#git#show_blob('HEAD', a:path)
+    call s:populate_scratch('[HEAD] ' . a:path
+          \ . (l:blob.ok ? '' : ' (not at HEAD)'),
+          \ l:blob.ok ? l:blob.lines : [], a:path)
+  else
+    call s:load_working_file(a:path)
+  endif
+endfunction
+
+" Filetype of the current buffer, falling back to the path for scratch
+" buffers that have no detectable type yet.
+function! s:current_ft(path) abort
+  return !empty(&filetype) ? &filetype : a:path
 endfunction
 
 " Show <sha> vs its parent for the given path.

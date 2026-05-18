@@ -29,6 +29,12 @@ COMMANDS                                          *merge-preview-commands*
 	Re-read git state and repopulate both panels. Equivalent to
 	pressing 'r' inside a panel.
 
+                                                       *:MergePreviewMode*
+:MergePreviewMode [{mode}]
+	Switch the comparison mode (see |merge-preview-modes|). {mode} is
+	`local` or `branch`. With no argument the mode is toggled.
+	Equivalent to pressing 'm' inside a panel.
+
 ==============================================================================
 BASE BRANCH DETECTION                              *merge-preview-base*
 
@@ -49,10 +55,27 @@ The merge-base of HEAD and the resolved base is captured once when the
 workspace opens, so diffs are stable even if the base ref advances.
 
 ==============================================================================
+FILES PANEL                                       *merge-preview-tree*
+
+The files panel is a NERDTree-style directory tree. Directories are shown
+with an open/close glyph (▾ / ▸ by default) and a trailing slash; files
+are shown indented under their directory with their git status letter.
+Chains of single-subdirectory directories are cascaded onto one row
+(e.g. `src/app/`), the same way NERDTree does.
+
+The panel is a fixed-size window: it keeps its width when diff windows
+open and close (it is 'winfixwidth'). You can still resize it manually
+with the mouse or `:vertical resize`. The commits panel is 'winfixheight'.
+
+The window's statusline shows the active comparison mode and base branch.
+
+==============================================================================
 PANELS AND MAPPINGS                              *merge-preview-mappings*
 
 Files panel (top-left):
-	<CR>	Open the file under the cursor: diff working tree vs base.
+	<CR>	On a file: open its diff. On a directory: collapse or
+		expand it.
+	m	Switch comparison mode (see |merge-preview-modes|).
 	r	Refresh both panels from git.
 	q	Close the workspace.
 	?	Print key help.
@@ -60,7 +83,8 @@ Files panel (top-left):
 Commits panel (bottom-left):
 	<CR>	Open the commit under the cursor: diff that commit vs its
 		parent for the active file.
-	R	Reset the diff to the default working-tree-vs-base view.
+	R	Reset the diff to the default view.
+	m	Switch comparison mode.
 	r	Refresh both panels from git.
 	q	Close the workspace.
 
@@ -69,15 +93,38 @@ M modified, A added, D deleted, R renamed, C copied, T type-change,
 U unmerged.
 
 ==============================================================================
+COMPARISON MODES                                  *merge-preview-modes*
+
+Two modes control what the files panel lists and what the default diff
+shows. Switch with |:MergePreviewMode| or the 'm' mapping; the current
+mode is shown in the files panel statusline.
+
+local changes (default)
+	Files panel lists branch commits plus staged, unstaged, and
+	untracked changes. The default diff puts the file at the branch
+	point on the left and the real, editable working file on the
+	right.
+
+branch-to-branch
+	Files panel lists only what is committed on the branch
+	(merge-base..HEAD). The default diff puts the file at the branch
+	point on the left and the file at HEAD on the right; both sides
+	are read-only.
+
+The left (base) side always uses the captured merge-base, so it is
+stable even if the base branch advances.
+
+==============================================================================
 DIFF BEHAVIOR                                       *merge-preview-diff*
 
-When a file is activated:
+When a file is activated (see |merge-preview-modes| for how the right
+side differs between modes):
 
-  - Modified or renamed: left side shows the file at the base branch
-    (using the old path for renames), right side opens the actual working
-    file (editable).
+  - Modified or renamed: left side shows the file at the branch point
+    (using the old path for renames), right side is the working file
+    (local mode, editable) or the file at HEAD (branch mode, read-only).
   - New on branch (A): left side shows an empty "[new file]" buffer.
-  - Deleted on branch (D): right side shows an empty "[deleted]" buffer.
+  - Deleted on branch (D): right side shows an empty placeholder buffer.
   - Binary: a placeholder buffer is shown instead of a diff.
   - Submodule: a placeholder buffer is shown.
 
@@ -87,8 +134,12 @@ For merge commits the first parent is used and a notice is shown at the
 top of each buffer. For root commits (no parent) the file at the commit
 is shown without a diff.
 
-The right-hand working-file buffer is the real file: edits and writes
-behave normally. Closing the workspace does not save those edits.
+In local mode the right-hand buffer is the real working file: edits and
+writes behave normally. Closing the workspace does not save those edits.
+
+Filetype is detected for the scratch (left/base and historical) buffers
+so syntax highlighting matches the file. You can override it at any time
+with `:setlocal filetype=<ft>` (or `:set ft=<ft>`) in that window.
 
 ==============================================================================
 CONFIGURATION                                   *merge-preview-config*
@@ -102,7 +153,13 @@ List of strings. Default: ['main', 'master', 'develop']. Tried in order
 as a last-resort fallback when nothing else resolves.
 
                                               *g:merge_preview_files_width*
-Number. Default: 40. Width in columns of the left panel column.
+Number. Default: 40. Initial width in columns of the left panel column.
+The panel is 'winfixwidth'; this only sets the starting size.
+
+                                                   *g:merge_preview_arrows*
+List of two strings: [collapsed, expanded] glyphs for directory rows in
+the files panel. Default: ['▸', '▾']. Set to e.g. ['+', '-'] for a
+plain-ASCII tree.
 
                                           *g:merge_preview_commits_height*
 Number. Default: 15. Height in rows of the bottom-left commits panel.

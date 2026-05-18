@@ -177,15 +177,18 @@ function! s:collect_diff(acc, args, source) abort
 endfunction
 
 " Return a list of {path, status, oldpath, sources} for every changed file.
-" Combines branch commits, staged, unstaged, and untracked.
-function! merge_preview#git#changed_files(merge_base) abort
+" mode 'local'  -> branch commits + staged + unstaged + untracked.
+" mode 'branch' -> branch commits only (branch-to-branch comparison).
+function! merge_preview#git#changed_files(merge_base, mode) abort
   let l:acc = {}
   if !empty(a:merge_base)
     call s:collect_diff(l:acc, shellescape(a:merge_base) . '..HEAD', 'c')
   endif
-  call s:collect_diff(l:acc, '--cached', 's')
-  call s:collect_diff(l:acc, '', 'u')
-  call s:collect_untracked(l:acc)
+  if a:mode !=# 'branch'
+    call s:collect_diff(l:acc, '--cached', 's')
+    call s:collect_diff(l:acc, '', 'u')
+    call s:collect_untracked(l:acc)
+  endif
 
   let l:files = []
   for l:path in sort(keys(l:acc))

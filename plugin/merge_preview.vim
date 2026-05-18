@@ -24,11 +24,15 @@ let g:merge_preview_commits_height = get(g:, 'merge_preview_commits_height', 15)
 let g:merge_preview_use_tab        = get(g:, 'merge_preview_use_tab', 0)
 let g:merge_preview_diffopt        = get(g:, 'merge_preview_diffopt',
       \ 'internal,filler,closeoff,vertical,algorithm:histogram,indent-heuristic')
+" [collapsed, expanded] glyphs used for directory rows in the files panel.
+let g:merge_preview_arrows         = get(g:, 'merge_preview_arrows', ['▸', '▾'])
 
 command! -nargs=? -complete=customlist,merge_preview#complete_branch
       \ MergePreview        call merge_preview#open(<q-args>)
 command! MergePreviewClose   call merge_preview#close()
 command! MergePreviewRefresh call merge_preview#refresh()
+command! -nargs=? -complete=customlist,merge_preview#complete_mode
+      \ MergePreviewMode    call merge_preview#mode(<q-args>)
 
 let &cpoptions = s:save_cpo
 unlet s:save_cpo
