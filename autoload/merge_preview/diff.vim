@@ -1,9 +1,29 @@
 " merge_preview#diff: load the right-pane vimdiff views.
 
+" Run a diff-building function with the panel layout pinned: 'equalalways'
+" is disabled so creating/closing the diff windows doesn't redistribute
+" width across every window, and the files/commits panel sizes are
+" snapshotted beforehand and restored afterward.
+function! s:with_stable_layout(Fn, arg) abort
+  let l:save_ea = &equalalways
+  call merge_preview#ui#snapshot_panel_sizes()
+  set noequalalways
+  try
+    call a:Fn(a:arg)
+  finally
+    call merge_preview#ui#restore_panel_sizes()
+    let &equalalways = l:save_ea
+  endtry
+endfunction
+
 " Show the default diff for a file entry.
 "   local  mode: file at the branch point  vs  the working tree (editable).
 "   branch mode: file at the branch point  vs  the file at HEAD (read-only).
 function! merge_preview#diff#show_default(entry) abort
+  call s:with_stable_layout(function('s:do_show_default'), a:entry)
+endfunction
+
+function! s:do_show_default(entry) abort
   let l:state = merge_preview#ui#state()
   let l:base_label = l:state.base
   let l:base_rev = !empty(l:state.merge_base) ? l:state.merge_base : l:state.base
@@ -87,19 +107,26 @@ endfunction
 
 " Show <sha> vs its parent for the given path.
 function! merge_preview#diff#show_commit(sha, current_path) abort
+  call s:with_stable_layout(function('s:do_show_commit'),
+        \ {'sha': a:sha, 'path': a:current_path})
+endfunction
+
+function! s:do_show_commit(arg) abort
+  let l:sha = a:arg.sha
+  let l:current_path = a:arg.path
   let l:state = merge_preview#ui#state()
   call merge_preview#ui#close_diff_area()
 
-  let l:parents = merge_preview#git#commit_parents(a:sha)
+  let l:parents = merge_preview#git#commit_parents(l:sha)
 
   let l:anchor = merge_preview#ui#open_diff_anchor()
   call win_gotoid(l:anchor)
 
   if empty(l:parents)
-    let l:blob = merge_preview#git#show_blob(a:sha, a:current_path)
-    let l:lines = ['[Initial commit ' . a:sha . ' — no parent to diff against]', '']
+    let l:blob = merge_preview#git#show_blob(l:sha, l:current_path)
+    let l:lines = ['[Initial commit ' . l:sha . ' — no parent to diff against]', '']
           \ + (l:blob.ok ? l:blob.lines : [])
-    call s:populate_scratch('[' . a:sha . '] ' . a:current_path, l:lines, a:current_path)
+    call s:populate_scratch('[' . l:sha . '] ' . l:current_path, l:lines, l:current_path)
     return
   endif
 
@@ -107,25 +134,25 @@ function! merge_preview#diff#show_commit(sha, current_path) abort
   let l:notice = l:is_merge
         \ ? ['[Merge commit — diffing against first parent ' . l:parents[0] . ']', '']
         \ : []
-  let l:parent = a:sha . '^1'
+  let l:parent = l:sha . '^1'
 
-  let l:parent_path = merge_preview#git#rename_at_commit(a:sha, a:current_path)
+  let l:parent_path = merge_preview#git#rename_at_commit(l:sha, l:current_path)
 
   " Right side: child version.
-  let l:child_blob = merge_preview#git#show_blob(a:sha, a:current_path)
+  let l:child_blob = merge_preview#git#show_blob(l:sha, l:current_path)
   let l:right_lines = l:notice + (l:child_blob.ok ? l:child_blob.lines : [])
-  let l:right_name = '[' . a:sha . '] ' . a:current_path
+  let l:right_name = '[' . l:sha . '] ' . l:current_path
         \ . (l:child_blob.ok ? '' : ' (not in commit)')
-  call s:populate_scratch(l:right_name, l:right_lines, a:current_path)
+  call s:populate_scratch(l:right_name, l:right_lines, l:current_path)
   diffthis
 
   " Left side: parent version.
   leftabove vnew
   let l:parent_blob = merge_preview#git#show_blob(l:parent, l:parent_path)
   let l:left_lines = l:notice + (l:parent_blob.ok ? l:parent_blob.lines : [])
-  let l:left_name = '[' . a:sha . '^] ' . l:parent_path
+  let l:left_name = '[' . l:sha . '^] ' . l:parent_path
         \ . (l:parent_blob.ok ? '' : ' (not in parent)')
-  call s:populate_scratch(l:left_name, l:left_lines, a:current_path)
+  call s:populate_scratch(l:left_name, l:left_lines, l:current_path)
   diffthis
 endfunction
 

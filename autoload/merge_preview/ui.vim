@@ -19,6 +19,8 @@ function! s:fresh_state() abort
         \ 'tree': {},
         \ 'tree_nodes': [],
         \ 'collapsed': {},
+        \ 'files_width': -1,
+        \ 'commits_height': -1,
         \ 'active_path': '',
         \ 'active_oldpath': '',
         \ 'active_status': '',
@@ -204,6 +206,7 @@ function! s:build_layout() abort
   let &l:statusline = '%!merge_preview#ui#statusline()'
   let s:state.win_files = win_getid()
   let s:state.buf_files = bufnr('%')
+  let s:state.files_width = g:merge_preview_files_width
 
   " Commits panel: fixed-height horizontal split below files.
   rightbelow new
@@ -212,6 +215,34 @@ function! s:build_layout() abort
   setlocal winfixheight
   let s:state.win_commits = win_getid()
   let s:state.buf_commits = bufnr('%')
+  let s:state.commits_height = g:merge_preview_commits_height
+endfunction
+
+" Remember the panels' current sizes so they can be restored after the
+" diff windows are rebuilt. Captures any deliberate manual resize the
+" user made, so it survives the next file activation.
+function! merge_preview#ui#snapshot_panel_sizes() abort
+  let l:fw = win_id2win(s:state.win_files)
+  if l:fw != 0
+    let s:state.files_width = winwidth(l:fw)
+  endif
+  let l:cw = win_id2win(s:state.win_commits)
+  if l:cw != 0
+    let s:state.commits_height = winheight(l:cw)
+  endif
+endfunction
+
+function! merge_preview#ui#restore_panel_sizes() abort
+  let l:cur = win_getid()
+  if s:state.files_width > 0 && win_id2win(s:state.win_files) != 0
+    call win_gotoid(s:state.win_files)
+    execute 'vertical resize ' . s:state.files_width
+  endif
+  if s:state.commits_height > 0 && win_id2win(s:state.win_commits) != 0
+    call win_gotoid(s:state.win_commits)
+    execute 'resize ' . s:state.commits_height
+  endif
+  call win_gotoid(l:cur)
 endfunction
 
 function! s:apply_panel(kind, name, filetype) abort
