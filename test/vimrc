@@ -1,0 +1,9 @@
+" Minimal vimrc for headless tests: put this plugin on the runtimepath.
+set nocompatible
+let s:root = expand('<sfile>:p:h:h')
+execute 'set runtimepath^=' . s:root
+filetype plugin on
+syntax enable
+runtime! plugin/merge_preview.vim
+" Deterministic, font-independent output for assertions.
+let g:merge_preview_use_nerd_icons = 0

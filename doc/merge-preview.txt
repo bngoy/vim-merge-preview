@@ -1,0 +1,86 @@
+*merge-preview.txt*  Preview a branch merge as a file tree + side-by-side diffs
+
+==============================================================================
+CONTENTS                                                  *merge-preview-contents*
+
+  1. Introduction ............ |merge-preview-intro|
+  2. Commands ................ |merge-preview-commands|
+  3. Panel mappings .......... |merge-preview-mappings|
+  4. Configuration ........... |merge-preview-config|
+  5. How the diff is computed  |merge-preview-base|
+
+==============================================================================
+1. INTRODUCTION                                              *merge-preview-intro*
+
+vim-merge-preview shows what merging the current branch into a target branch
+would look like. It opens a NerdTree-style panel on the left listing every
+changed file with a status sign:
+
+  +  new file       (green)
+  ~  modified file  (yellow, also used for renames)
+  -  deleted file   (red)
+
+Pressing <CR> on a file opens a |Gvdiffsplit|-style vertical diff of the file
+at the merge base (left) against your working copy (right). vim-fugitive is
+not required; the diff is produced natively.
+
+==============================================================================
+2. COMMANDS                                              *merge-preview-commands*
+
+                                                                  *:MergePreview*
+:MergePreview [{target}]
+        Open the preview panel. {target} is any branch, tag or commit. With no
+        argument the repository's default branch is used (origin/HEAD, then
+        main, master, trunk or develop). See |merge-preview-base|.
+        {target} completes against local and remote branches.
+
+                                                            *:MergePreviewToggle*
+:MergePreviewToggle [{target}]
+        Open the panel, or close it if it is already open.
+
+                                                             *:MergePreviewClose*
+:MergePreviewClose
+        Close the panel and end the session.
+
+==============================================================================
+3. PANEL MAPPINGS                                        *merge-preview-mappings*
+
+These are local to the preview panel:
+
+  <CR>, o   On a file: open its diff and focus it.
+            On a folder: expand / collapse it.
+  go, p     Open a file's diff but keep the cursor in the panel (preview).
+  za        Toggle the folder under the cursor.
+  J / K     Jump to the next / previous file.
+  R         Refresh (re-run git and rebuild the tree).
+  q         Close the panel.
+
+==============================================================================
+4. CONFIGURATION                                          *merge-preview-config*
+
+                                                     *g:merge_preview_panel_width*
+g:merge_preview_panel_width
+        Width of the left panel in columns. Default: 38 >
+            let g:merge_preview_panel_width = 45
+<
+                                                 *g:merge_preview_use_nerd_icons*
+g:merge_preview_use_nerd_icons
+        When 1 (default) show Nerd Font folder and filetype glyphs. Set to 0
+        for a plain ASCII tree if you do not use a patched font. The +/~/-
+        status signs are always plain ASCII. >
+            let g:merge_preview_use_nerd_icons = 0
+<
+==============================================================================
+5. HOW THE DIFF IS COMPUTED                                  *merge-preview-base*
+
+The "base" of every diff is the merge base of {target} and HEAD, i.e. >
+            git merge-base {target} HEAD
+<
+This is the commit your branch was forked from, so the panel shows only the
+changes your branch introduces, not unrelated changes made on {target} in the
+meantime (the same three-dot semantics a "merge request" diff uses).
+
+The right-hand side of each diff is your working tree, so uncommitted edits to
+tracked files are included. Untracked files are not shown.
+
+ vim:tw=78:ts=8:ft=help:norl:
