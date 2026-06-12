@@ -78,15 +78,17 @@ if command -v script >/dev/null 2>&1; then
   script -qec "MP_REPO='$REPO' MP_OUT='$SMOKE' vim -N -u '$VIMRC' \
     -c 'source $PLUGIN_DIR/test/smoke.vim' -c 'qa!'" /dev/null >/dev/null 2>&1 || true
   if grep -q 'wins=3' "$SMOKE" 2>/dev/null && grep -q 'diff=1' "$SMOKE" 2>/dev/null \
-     && grep -q 'err=$' "$SMOKE" 2>/dev/null; then
+     && grep -q 'err=$' "$SMOKE" 2>/dev/null && grep -q 'in_panel=0' "$SMOKE" 2>/dev/null; then
     pass "panel opens a 3-pane Gvdiffsplit-style diff with no errors"
-    if grep -q 'nav=7,8,7' "$SMOKE" 2>/dev/null; then
-      pass "]f / [f move to next / previous file"
+    # ]f from the diff window: 7 -> 8 -> 9, then [f back to 8.
+    if grep -q 'nav=7,8,9,8' "$SMOKE" 2>/dev/null; then
+      pass "]f / [f navigate-and-open from inside the diff window"
     else
       fail "]f / [f navigation wrong: $(grep '^nav=' "$SMOKE")"
     fi
   else
     echo "skip - interactive UI smoke test (no usable TTY)"
+    echo "  (smoke output was:)"; sed 's/^/    /' "$SMOKE" 2>/dev/null || true
   fi
 else
   echo "skip - interactive UI smoke test ('script' not found)"

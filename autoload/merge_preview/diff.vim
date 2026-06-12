@@ -78,11 +78,18 @@ function! merge_preview#diff#open(state, node) abort
     call s:scratch(l:base, l:content, l:name)
   endif
 
-  call win_gotoid(l:base) | diffthis | setlocal foldlevel=99
-  call win_gotoid(l:work) | diffthis | setlocal foldlevel=99
+  call win_gotoid(l:base) | diffthis | setlocal foldlevel=99 | call s:nav_maps()
+  call win_gotoid(l:work) | diffthis | setlocal foldlevel=99 | call s:nav_maps()
   call win_gotoid(l:work)
   silent! normal! gg
   silent! normal! ]c
+endfunction
+
+" Override the built-in ]f / [f (synonyms for gf) in the current diff buffer so
+" they step to the next / previous file in the panel and open it.
+function! s:nav_maps() abort
+  nnoremap <buffer><silent> ]f :call merge_preview#open_relative(1)<CR>
+  nnoremap <buffer><silent> [f :call merge_preview#open_relative(-1)<CR>
 endfunction
 
 " Tear down diff state so the next open() rebuilds cleanly.

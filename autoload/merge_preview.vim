@@ -62,8 +62,8 @@ function! s:setup_mappings() abort
   nnoremap <buffer><silent> q     :call merge_preview#close()<CR>
   nnoremap <buffer><silent> J     :call merge_preview#jump_file(1)<CR>
   nnoremap <buffer><silent> K     :call merge_preview#jump_file(-1)<CR>
-  nnoremap <buffer><silent> ]f    :call merge_preview#jump_file(1)<CR>
-  nnoremap <buffer><silent> [f    :call merge_preview#jump_file(-1)<CR>
+  nnoremap <buffer><silent> ]f    :call merge_preview#open_relative(1)<CR>
+  nnoremap <buffer><silent> [f    :call merge_preview#open_relative(-1)<CR>
 endfunction
 
 function! s:open_panel() abort
@@ -100,6 +100,18 @@ function! s:rerender() abort
   call setline(1, l:lines)
   setlocal nomodifiable
   call setbufvar(s:state.bufnr, 'merge_preview_map', l:map)
+  " Flat list of the currently-visible files (panel order) plus a path->line
+  " index, used for ]f / [f sequential navigation and cursor syncing.
+  let s:state.ordered = []
+  let s:state.line_of = {}
+  let l:lnum = 0
+  for l:node in l:map
+    let l:lnum += 1
+    if !empty(l:node) && has_key(l:node, 'type') && l:node.type ==# 'file'
+      call add(s:state.ordered, l:node)
+      let s:state.line_of[l:node.path] = l:lnum
+    endif
+  endfor
 endfunction
 
 function! s:rerender_keep_cursor() abort
@@ -193,10 +205,53 @@ function! merge_preview#activate(mode) abort
     call s:rerender_keep_cursor()
     return
   endif
+  let s:state.current_path = l:node.path
   call merge_preview#diff#open(s:state, l:node)
   if a:mode ==# 'preview'
     call win_gotoid(bufwinid(s:state.bufnr))
   endif
+endfunction
+
+" Move the panel's cursor onto a:node without stealing focus from the caller.
+function! s:sync_panel_cursor(node) abort
+  let l:win = bufwinid(s:state.bufnr)
+  if l:win == -1
+    return
+  endif
+  let l:lnum = get(get(s:state, 'line_of', {}), a:node.path, 0)
+  if l:lnum > 0
+    call win_execute(l:win, 'call cursor(' . l:lnum . ', 1)')
+  endif
+endfunction
+
+" Step to the file after (a:dir=1) or before (a:dir=-1) the currently-open one
+" and open its diff (same as <CR>). Works from the panel and from either diff
+" window. Falls back to the built-in ]f / [f (== gf) when no session is active,
+" so the override left on viewed buffers stays harmless after closing.
+function! merge_preview#open_relative(dir) abort
+  if empty(s:state) || empty(get(s:state, 'ordered', []))
+    silent! normal! gf
+    return
+  endif
+  let l:files = s:state.ordered
+  let l:n = len(l:files)
+  let l:cur = get(s:state, 'current_path', '')
+  let l:idx = -1
+  for l:i in range(l:n)
+    if l:files[l:i].path ==# l:cur
+      let l:idx = l:i
+      break
+    endif
+  endfor
+  let l:new = l:idx == -1 ? (a:dir > 0 ? 0 : l:n - 1) : l:idx + a:dir
+  if l:new < 0 || l:new >= l:n
+    echohl WarningMsg | echo 'merge-preview: no more files' | echohl None
+    return
+  endif
+  let l:node = l:files[l:new]
+  let s:state.current_path = l:node.path
+  call s:sync_panel_cursor(l:node)
+  call merge_preview#diff#open(s:state, l:node)
 endfunction
 
 function! merge_preview#toggle_node() abort

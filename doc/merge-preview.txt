@@ -51,10 +51,16 @@ These are local to the preview panel:
             On a folder: expand / collapse it.
   go, p     Open a file's diff but keep the cursor in the panel (preview).
   za        Toggle the folder under the cursor.
-  ]f / [f   Jump to the next / previous file.
-  J / K     Jump to the next / previous file (aliases of ]f / [f).
+  ]f / [f   Open the next / previous file's diff (like <CR>). Unlike the other
+            panel keys these are ALSO mapped inside the two diff windows, so you
+            can step through the changed files without returning to the panel.
+  J / K     Move to the next / previous file in the panel without opening it.
   R         Refresh (re-run git and rebuild the tree).
   q         Close the panel.
+
+Note: ]f and [f normally mean |gf| ("edit file under cursor"). Inside the diff
+windows this plugin overrides them with a buffer-local mapping while a preview
+session is active; once the session is closed they fall back to |gf|.
 
 ==============================================================================
 4. CONFIGURATION                                          *merge-preview-config*

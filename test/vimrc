@@ -1,5 +1,7 @@
 " Minimal vimrc for headless tests: put this plugin on the runtimepath.
 set nocompatible
+" Match a real user's setup so Nerd Font glyphs (Private Use Area) round-trip.
+set encoding=utf-8
 let s:root = expand('<sfile>:p:h:h')
 execute 'set runtimepath^=' . s:root
 filetype plugin on
