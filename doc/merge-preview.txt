@@ -51,7 +51,8 @@ These are local to the preview panel:
             On a folder: expand / collapse it.
   go, p     Open a file's diff but keep the cursor in the panel (preview).
   za        Toggle the folder under the cursor.
-  J / K     Jump to the next / previous file.
+  ]f / [f   Jump to the next / previous file.
+  J / K     Jump to the next / previous file (aliases of ]f / [f).
   R         Refresh (re-run git and rebuild the tree).
   q         Close the panel.
 

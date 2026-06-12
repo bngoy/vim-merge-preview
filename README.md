@@ -72,7 +72,8 @@ Then `:helptags ALL` (or `:Helptags` with fugitive) to index the docs.
 | `<CR>`,`o` | File → open & focus its diff; folder → expand/collapse |
 | `go`, `p`  | Open a file's diff but keep the cursor in the panel |
 | `za`       | Toggle the folder under the cursor                  |
-| `J` / `K`  | Jump to next / previous file                        |
+| `]f`/`[f`  | Jump to next / previous file                        |
+| `J` / `K`  | Jump to next / previous file (aliases of `]f`/`[f`) |
 | `R`        | Refresh (re-run git)                                |
 | `q`        | Close                                               |
 

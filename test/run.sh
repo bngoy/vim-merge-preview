@@ -73,18 +73,18 @@ if command -v script >/dev/null 2>&1; then
   SMOKE="$WORK/smoke.txt"
   : > "$SMOKE"
   # util-linux `script -qec CMD FILE`; if this form is unsupported the block is
-  # simply skipped via the OK guard below.
-  script -qec "vim -N -u '$VIMRC' \
-    -c 'cd $REPO' \
-    -c 'let v:errmsg=\"\"' \
-    -c 'MergePreview main' \
-    -c 'call cursor(7,1)' \
-    -c 'call merge_preview#activate(\"edit\")' \
-    -c 'call writefile([\"wins=\".winnr(\"\$\"), \"diff=\".&diff, \"err=\".v:errmsg], \"$SMOKE\")' \
-    -c 'qa!'" /dev/null >/dev/null 2>&1 || true
+  # simply skipped via the guards below. Files are on panel lines 7..10 (src/ at
+  # 6), so ]f from the top lands on 7, again on 8, and [f returns to 7.
+  script -qec "MP_REPO='$REPO' MP_OUT='$SMOKE' vim -N -u '$VIMRC' \
+    -c 'source $PLUGIN_DIR/test/smoke.vim' -c 'qa!'" /dev/null >/dev/null 2>&1 || true
   if grep -q 'wins=3' "$SMOKE" 2>/dev/null && grep -q 'diff=1' "$SMOKE" 2>/dev/null \
      && grep -q 'err=$' "$SMOKE" 2>/dev/null; then
     pass "panel opens a 3-pane Gvdiffsplit-style diff with no errors"
+    if grep -q 'nav=7,8,7' "$SMOKE" 2>/dev/null; then
+      pass "]f / [f move to next / previous file"
+    else
+      fail "]f / [f navigation wrong: $(grep '^nav=' "$SMOKE")"
+    fi
   else
     echo "skip - interactive UI smoke test (no usable TTY)"
   fi

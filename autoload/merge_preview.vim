@@ -62,6 +62,8 @@ function! s:setup_mappings() abort
   nnoremap <buffer><silent> q     :call merge_preview#close()<CR>
   nnoremap <buffer><silent> J     :call merge_preview#jump_file(1)<CR>
   nnoremap <buffer><silent> K     :call merge_preview#jump_file(-1)<CR>
+  nnoremap <buffer><silent> ]f    :call merge_preview#jump_file(1)<CR>
+  nnoremap <buffer><silent> [f    :call merge_preview#jump_file(-1)<CR>
 endfunction
 
 function! s:open_panel() abort
